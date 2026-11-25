@@ -76,9 +76,9 @@ object AppUpdateChecker {
     fun buildApkFileName(versionName: String): String {
         val sanitized = versionName
             .trim()
-            .replace(" ", "_")
-            .replace(Regex("[^A-Za-z0-9._-]"), "")
-            .ifBlank { "1.0" }
+            .replace(Regex("[^A-Za-z0-9_-]+"), "_")
+            .trim('_')
+            .ifBlank { "1_0" }
         return "plump_heroes_${sanitized}.apk"
     }
 

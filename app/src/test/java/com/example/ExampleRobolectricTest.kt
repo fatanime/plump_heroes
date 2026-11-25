@@ -4480,9 +4480,9 @@ class ExampleRobolectricTest {
         prefs.edit().clear().commit()
 
         try {
-            // 1. APK filename naming convention: plump_heroes_{version}.apk
-            assertEquals("plump_heroes_1.3.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3"))
-            assertEquals("plump_heroes_1.4_Beta.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.4 Beta"))
+            // 1. APK filename naming convention: plump_heroes_{version_with_underscores}.apk
+            assertEquals("plump_heroes_1_3.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3"))
+            assertEquals("plump_heroes_1_4_Beta.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.4 Beta"))
 
             // 2. Parse valid remote version.json for fatanime/plump_heroes
             val validJson = """
@@ -4624,7 +4624,7 @@ class ExampleRobolectricTest {
             assertTrue("One-shot SFX $sfx must produce audible output (peak=$peak)", peak > 3000)
         }
 
-        // Verify apk filename for 1.3.0
-        assertEquals("plump_heroes_1.3.0.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3.0"))
+        // Verify apk filename for 1.3.0 uses underscores
+        assertEquals("plump_heroes_1_3_0.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3.0"))
     }
 }
