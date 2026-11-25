@@ -1,0 +1,7 @@
+{
+  "versionCode": 31,
+  "versionName": "1.3",
+  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1.3.apk",
+  "changelogRu": "Добавлена проверка обновлений через GitHub, спокойная средневековая лаундж-музыка в меню, фильтры стихий в отряде и сохранение настройки звука.",
+  "changelogEn": "Added GitHub update checks, calm medieval lounge menu music, element filters in the hero roster, and persistent sound mute settings."
+}

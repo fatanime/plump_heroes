@@ -53,10 +53,15 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onToggleGoogleSync: ((Boolean, String?) -> Unit)? = null,
     onToggleSoundMuted: () -> Unit = {},
+    isCheckingForUpdate: Boolean = false,
+    updateStatusMessage: String? = null,
+    onCheckForUpdates: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val currentLanguage = GameLocaleState.language
+    val appVersionName = com.example.BuildConfig.VERSION_NAME
+    val saveFileName = "plump_heroes_save_${appVersionName.replace(" ", "_")}.json"
     var editingName by remember { mutableStateOf(profile.name) }
     var isEditingNameOpen by remember { mutableStateOf(false) }
     var jsonExportString by remember { mutableStateOf<String?>(null) }
@@ -475,7 +480,7 @@ fun SettingsScreen(
                                 val json = onExportJson()
                                 pendingExportJson = json
                                 jsonExportString = json
-                                createDocumentLauncher.launch("plump_heroes_save_1.2_Release.json")
+                                createDocumentLauncher.launch(saveFileName)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7), contentColor = Color.White),
                             shape = RoundedCornerShape(8.dp),
@@ -537,8 +542,8 @@ fun SettingsScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = tr(
-                                        "Файл сохранения plump_heroes_save_1.2_Release.json готов!",
-                                        "Save file plump_heroes_save_1.2_Release.json is ready!"
+                                        "Файл сохранения $saveFileName готов!",
+                                        "Save file $saveFileName is ready!"
                                     ),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
@@ -600,7 +605,7 @@ fun SettingsScreen(
                     ) {
                         Column {
                             Text(
-                                text = tr("Версия приложения: 1.2 Release", "App Version: 1.2 Release"),
+                                text = tr("Версия приложения: $appVersionName", "App Version: $appVersionName"),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -609,7 +614,7 @@ fun SettingsScreen(
                                 text = if (isChangelogOpen) {
                                     tr("Нажмите, чтобы скрыть список изменений ▲", "Tap to hide changelog ▲")
                                 } else {
-                                    tr("Нажмите, чтобы узнать, что нового в 1.2 Release ▼", "Tap to see what's new in 1.2 Release ▼")
+                                    tr("Нажмите, чтобы узнать, что нового в $appVersionName ▼", "Tap to see what's new in $appVersionName ▼")
                                 },
                                 fontSize = 10.sp,
                                 color = GameGold
@@ -635,7 +640,7 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = tr("🌟 Что нового в версии 1.2 Release:", "🌟 What's new in 1.2 Release:"),
+                            text = tr("🌟 Что нового в версии $appVersionName:", "🌟 What's new in $appVersionName:"),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = GameGoldLight
@@ -643,12 +648,71 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Добавлен центральный Хаб боевых режимов (Цитадель Аврезии), новый ежедневный режим «Башня испытаний», вкладка «Трофеи» и обновлённое обучение!",
-                                "Added the central Battle Hub (Citadel of Avresia), the new daily Tower of Trials mode, the Trophies tab, and updated tutorials!"
+                                "Добавлены фильтры по стихиям и значки стихий на картах, средневековая лаундж-музыка в меню, боевая и босс-темы, отключение звука и проверка обновлений через GitHub!",
+                                "Added element badges and filters on hero cards, calm medieval lounge menu music, battle and boss themes, persistent sound mute, and GitHub update checks!"
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),
                             lineHeight = 15.sp
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onCheckForUpdates,
+                    enabled = !isCheckingForUpdate,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF3E2D60),
+                        contentColor = GameGoldLight
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("settings_check_updates_button")
+                ) {
+                    if (isCheckingForUpdate) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = GameGoldLight,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = tr("Проверяем GitHub...", "Checking GitHub..."),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = tr("Проверить обновления", "Check for Updates"),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+
+                if (!updateStatusMessage.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1F1633),
+                        border = BorderStroke(1.dp, Color(0xFF5A4780)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_update_status_banner")
+                    ) {
+                        Text(
+                            text = updateStatusMessage,
+                            fontSize = 11.sp,
+                            color = Color(0xFFE6DCF8),
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                         )
                     }
                 }

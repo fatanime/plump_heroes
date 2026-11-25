@@ -201,7 +201,7 @@ fun SplashScreen(
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Text(
-                    text = "v. 1.2 Release",
+                    text = "v. ${com.example.BuildConfig.VERSION_NAME}",
                     color = Color(0xFFFFE082),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,

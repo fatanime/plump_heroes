@@ -293,69 +293,98 @@ private class FantasyAudioSynthesizer(private val sampleRate: Int) {
         return finished
     }
 
-    // THEME 1: Calm Medieval Tavern (D Dorian, gentle 3/4 lute + wooden flute + warm drone)
+    // THEME 1: Calm Medieval Lounge (E Minor/Aeolian, same fantasy tonality as Battle Normal, slow warm pads + soft harp + alto flute + gentle bodhran pulse)
     private fun synthesizeTavernSample(t: Double): Double {
-        val stepSec = 0.26
-        val totalSteps = 48
+        val stepSec = 0.36
+        val totalSteps = 64
         val loopDur = totalSteps * stepSec
         val loopT = t % loopDur
         val stepIdx = ((loopT / stepSec).toInt()).coerceIn(0, totalSteps - 1)
         val stepT = loopT - stepIdx * stepSec
 
-        // 4-bar chord roots in D Dorian: Dm (0..11), C (12..23), Gm (24..35), Am -> Dm (36..47)
-        val chordRoots = intArrayOf(50, 50, 48, 48, 43, 43, 45, 50) // D3, D3, C3, C3, G2, G2, A2, D3
-        val chordThirds = intArrayOf(53, 53, 52, 52, 46, 46, 48, 53)
-        val chordFifths = intArrayOf(57, 57, 55, 55, 50, 50, 52, 57)
-        val phraseIdx = (stepIdx / 6).coerceIn(0, 7)
+        // 8-bar lounge progression in E Minor (matching Battle Normal's tonal world):
+        // Em9 -> Cmaj7 -> Am9 -> Bm7 -> Em9 -> Gmaj7 -> Dadd9 -> Bm7
+        val chordRoots = intArrayOf(40, 36, 45, 47, 40, 43, 38, 47)   // E2, C2, A2, B2, E2, G2, D2, B2
+        val chordFifths = intArrayOf(47, 43, 52, 54, 47, 50, 45, 54)  // B2, G2, E3, F#3, B2, D3, A2, F#3
+        val chordThirds = intArrayOf(55, 52, 60, 62, 55, 59, 54, 62)  // G3, E3, C4, D4, G3, B3, F#3, D4
+        val chordNinths = intArrayOf(54, 59, 59, 57, 54, 57, 52, 57)  // F#3, B3, B3, A3, F#3, A3, E3, A3
+        val barIdx = (stepIdx / 8).coerceIn(0, 7)
+        val barT = loopT - barIdx * (8 * stepSec)
+        val barDur = 8 * stepSec
 
-        // Plucked lute arpeggio (3/4 pattern: root - 3rd - 5th - octave - 5th - 3rd)
-        val arpMidi = when (stepIdx % 6) {
-            0 -> chordRoots[phraseIdx]
-            1 -> chordThirds[phraseIdx]
-            2 -> chordFifths[phraseIdx]
-            3 -> chordRoots[phraseIdx] + 12
-            4 -> chordFifths[phraseIdx]
-            else -> chordThirds[phraseIdx]
+        // 1. Warm velvet string/lounge pad (slow swell with subtle chorus warmth)
+        val padAtk = (1.0 - exp(-barT * 2.2))
+        val padRel = exp(-maxOf(0.0, barT - barDur * 0.72) * 2.5)
+        val padBreath = 0.88 + 0.12 * sin(2.0 * PI * 0.28 * t)
+        val rHz = midiToHz(chordRoots[barIdx] + 12)
+        val fHz = midiToHz(chordFifths[barIdx] + 12)
+        val tHz = midiToHz(chordThirds[barIdx])
+        val nHz = midiToHz(chordNinths[barIdx] + 12)
+        val padRaw = (
+            sin(2.0 * PI * rHz * t) * 0.42 +
+                sin(2.0 * PI * rHz * 1.003 * t) * 0.25 +
+                sin(2.0 * PI * fHz * t) * 0.28 +
+                sin(2.0 * PI * tHz * t) * 0.22 +
+                sin(2.0 * PI * nHz * t) * 0.16
+            ) * padAtk * padRel * padBreath * 0.22
+
+        // 2. Soft plucked medieval harp arpeggio (gentle, rounded overtones, zero harshness)
+        val arpMidi = when (stepIdx % 8) {
+            0 -> chordRoots[barIdx] + 12
+            1 -> chordFifths[barIdx] + 12
+            2 -> chordNinths[barIdx] + 12
+            3 -> chordThirds[barIdx] + 12
+            4 -> chordFifths[barIdx] + 12
+            5 -> chordNinths[barIdx] + 12
+            6 -> chordThirds[barIdx]
+            else -> chordFifths[barIdx] + 12
         }
-        val luteHz = midiToHz(arpMidi)
-        val lutePhase = 2.0 * PI * luteHz * stepT
-        val luteEnv = (1.0 - exp(-stepT * 110.0)) * exp(-stepT * 4.8)
-        val luteWave = (
-            sin(lutePhase) +
-                0.42 * exp(-stepT * 7.5) * sin(2.0 * lutePhase) +
-                0.18 * exp(-stepT * 13.0) * sin(3.0 * lutePhase)
-            ) * luteEnv * 0.28
+        val harpHz = midiToHz(arpMidi)
+        val harpPhase = 2.0 * PI * harpHz * stepT
+        val harpEnv = (1.0 - exp(-stepT * 52.0)) * exp(-stepT * 3.1)
+        val harpVoice = (
+            sin(harpPhase) +
+                0.26 * exp(-stepT * 5.0) * sin(2.0 * harpPhase) +
+                0.08 * exp(-stepT * 9.0) * sin(3.0 * harpPhase)
+            ) * harpEnv * 0.21
 
-        // Gentle wooden flute melody over 24 two-step notes (-1 = rest)
-        val fluteMelody = intArrayOf(
-            74, 77, 76, 74, 72, 74,
-            69, -1, 72, 74, 76, 72,
-            74, 72, 69, -1, 67, 69,
-            70, 69, 67, 65, 69, -1,
-            74, 76, 77, 79, 77, 76,
-            74, 72, 74, -1, 76, 77,
-            79, 77, 76, 74, 72, 69,
-            72, 74, 74, -1, -1, -1
+        // 3. Lyrical alto flute / soft strings lead in E minor (spacious, unhurried lounge phrases)
+        val loungeMelody = intArrayOf(
+            71, -1, 74, 76, 74, -1, 71, -1,
+            72, -1, 74, 76, 79, -1, 76, -1,
+            74, 72, 71, -1, 69, -1, 71, 72,
+            71, -1, 69, 66, 67, -1, -1, -1,
+            76, -1, 79, 78, 76, -1, 74, -1,
+            79, -1, 78, 76, 74, -1, 71, -1,
+            74, 72, 71, -1, 69, -1, 71, 74,
+            71, -1, -1, -1, 67, 66, -1, -1
         )
-        val fluteMidi = fluteMelody[stepIdx]
-        val fluteVoice = if (fluteMidi > 0) {
-            val prevSame = stepIdx > 0 && fluteMelody[stepIdx - 1] == fluteMidi
-            val nextSame = stepIdx + 1 < totalSteps && fluteMelody[stepIdx + 1] == fluteMidi
-            val fHz = midiToHz(fluteMidi)
-            val vib = 1.0 + 0.004 * sin(2.0 * PI * 4.8 * t)
-            val fPhase = 2.0 * PI * fHz * vib * t
-            val atk = if (prevSame) 1.0 else (1.0 - exp(-stepT * 28.0))
-            val rel = if (nextSame) 1.0 else exp(-maxOf(0.0, stepT - stepSec * 0.45) * 9.0)
-            (sin(fPhase) + 0.14 * sin(2.0 * fPhase)) * atk * rel * 0.20
+        val mMidi = loungeMelody[stepIdx]
+        val fluteVoice = if (mMidi > 0) {
+            val lHz = midiToHz(mMidi)
+            val vib = 1.0 + 0.0032 * sin(2.0 * PI * 4.2 * t)
+            val lPhase = 2.0 * PI * lHz * vib * t
+            val atk = 1.0 - exp(-stepT * 14.0)
+            val rel = exp(-maxOf(0.0, stepT - stepSec * 0.42) * 3.8)
+            val warmBody = sin(lPhase) + 0.22 * sin(2.0 * lPhase) + 0.07 * sin(3.0 * lPhase)
+            warmBody * atk * rel * 0.16
         } else 0.0
 
-        // Warm tavern fifth drone (D2 + A2)
-        val drone = (sin(2.0 * PI * midiToHz(38) * t) + 0.55 * sin(2.0 * PI * midiToHz(45) * t)) * 0.065
+        // 4. Deep muted frame drum (soft lounge heartbeat on 0, gentle thumb on 4) + subtle shaker on 2, 6
+        val barStep = stepIdx % 8
+        val softFrameDrum = if (barStep == 0 || barStep == 4) {
+            val vol = if (barStep == 0) 0.14 else 0.08
+            val drop = 64.0 - 18.0 * (1.0 - exp(-stepT * 14.0))
+            sin(2.0 * PI * drop * stepT) * exp(-stepT * 7.5) * vol
+        } else 0.0
+        val softBrush = if (barStep == 2 || barStep == 6) {
+            nextNoise() * exp(-stepT * 18.0) * 0.022
+        } else 0.0
 
-        // Soft warm low-pass + tavern hall reverb
-        val raw = luteWave + fluteVoice + drone
-        lpState += 0.34 * (raw - lpState)
-        return applyRoomReverb(lpState, 0.32)
+        // Warm velvety lounge low-pass + spacious hall reverb
+        val raw = padRaw + harpVoice + fluteVoice + softFrameDrum + softBrush
+        lpState += 0.27 * (raw - lpState)
+        return applyRoomReverb(lpState, 0.40)
     }
 
     // THEME 2: Energetic Fantasy Battle (E Minor, driving 4/4 horns/strings + percussion)

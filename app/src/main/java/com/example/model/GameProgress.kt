@@ -128,7 +128,8 @@ data class PlayerProfile(
     val towerSavedEnemyHps: List<Int> = emptyList(),
     val towerDeckHeroIds: List<String?> = emptyList(),
     val viewedGalleryImageKeys: Set<String> = emptySet(),
-    val isSoundMuted: Boolean = false
+    val isSoundMuted: Boolean = false,
+    val skippedUpdateVersionCode: Int = 0
 )
 
 const val COLISEUM_DAILY_ENTRY_LIMIT = 2

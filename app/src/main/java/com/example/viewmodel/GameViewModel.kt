@@ -9,10 +9,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.GameDataRepository
 import com.example.i18n.*
 import com.example.model.*
+import com.example.network.AppUpdateCheckOutcome
+import com.example.network.AppUpdateChecker
+import com.example.network.RemoteAppVersionInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
@@ -100,6 +104,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _towerDeckHeroIds = MutableStateFlow<List<String?>>(listOf(null, null, null, null))
     val towerDeckHeroIds: StateFlow<List<String?>> = _towerDeckHeroIds.asStateFlow()
+
+    private val _availableAppUpdate = MutableStateFlow<RemoteAppVersionInfo?>(null)
+    val availableAppUpdate: StateFlow<RemoteAppVersionInfo?> = _availableAppUpdate.asStateFlow()
+
+    private val _isCheckingForUpdate = MutableStateFlow(false)
+    val isCheckingForUpdate: StateFlow<Boolean> = _isCheckingForUpdate.asStateFlow()
+
+    private val _updateCheckStatusMessage = MutableStateFlow<String?>(null)
+    val updateCheckStatusMessage: StateFlow<String?> = _updateCheckStatusMessage.asStateFlow()
 
     private var activeTowerSessionNowMs: Long? = null
 
@@ -225,6 +238,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         refreshArenaBots()
         refreshDailyQuestsIfNeeded()
         checkDailyLoginBonus()
+        checkForAppUpdates(manual = false)
     }
 
     fun checkAndRegenerateArenaKeys() {
@@ -3137,6 +3151,71 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleSoundMuted() {
         setSoundMuted(!_playerProfile.value.isSoundMuted)
+    }
+
+    fun checkForAppUpdates(
+        manual: Boolean = false,
+        installedVersionCode: Int = com.example.BuildConfig.VERSION_CODE,
+        installedVersionName: String = com.example.BuildConfig.VERSION_NAME,
+        httpFetcher: ((String) -> String?)? = null
+    ) {
+        if (_isCheckingForUpdate.value) return
+        viewModelScope.launch {
+            _isCheckingForUpdate.value = true
+            if (manual) {
+                _updateCheckStatusMessage.value = null
+            }
+            val skippedCode = _playerProfile.value.skippedUpdateVersionCode
+            val outcome = AppUpdateChecker.checkRemoteVersion(
+                installedVersionCode = installedVersionCode,
+                installedVersionName = installedVersionName,
+                skippedVersionCode = skippedCode,
+                ignoreSkipped = manual,
+                httpFetcher = httpFetcher
+            )
+            when (outcome) {
+                is AppUpdateCheckOutcome.UpdateAvailable -> {
+                    _availableAppUpdate.value = outcome.info
+                    if (manual) {
+                        _updateCheckStatusMessage.value = null
+                    }
+                }
+                is AppUpdateCheckOutcome.UpToDate -> {
+                    if (manual) {
+                        _updateCheckStatusMessage.value = tr(
+                            "У вас установлена актуальная версия (${outcome.currentVersionName})",
+                            "You are on the latest version (${outcome.currentVersionName})"
+                        )
+                    }
+                }
+                AppUpdateCheckOutcome.NetworkError -> {
+                    if (manual) {
+                        _updateCheckStatusMessage.value = tr(
+                            "Не удалось проверить обновления. Проверьте подключение к интернету.",
+                            "Could not check for updates. Please check your internet connection."
+                        )
+                    }
+                }
+            }
+            _isCheckingForUpdate.value = false
+        }
+    }
+
+    fun dismissAvailableAppUpdate() {
+        _availableAppUpdate.value = null
+    }
+
+    fun skipAvailableAppUpdate() {
+        val update = _availableAppUpdate.value
+        _availableAppUpdate.value = null
+        if (update != null && update.versionCode > _playerProfile.value.skippedUpdateVersionCode) {
+            _playerProfile.update { it.copy(skippedUpdateVersionCode = update.versionCode) }
+            repository.savePlayerProfile(_playerProfile.value)
+        }
+    }
+
+    fun clearUpdateCheckStatus() {
+        _updateCheckStatusMessage.value = null
     }
 
     fun markBonusGalleryImageViewed(imageKey: String) {

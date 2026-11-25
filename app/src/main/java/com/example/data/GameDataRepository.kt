@@ -1279,13 +1279,17 @@ class GameDataRepository(context: Context) {
             putString("tower_deck", profile.towerDeckHeroIds.joinToString(",") { it ?: "null" })
             putString("viewed_gallery_keys", profile.viewedGalleryImageKeys.joinToString(","))
             putBoolean("sound_muted", profile.isSoundMuted)
+            putInt("skipped_update_version_code", profile.skippedUpdateVersionCode)
             apply()
         }
     }
 
     fun loadPlayerProfile(): PlayerProfile {
         if (!prefs.contains("profile_name")) {
-            return PlayerProfile(isSoundMuted = prefs.getBoolean("sound_muted", false))
+            return PlayerProfile(
+                isSoundMuted = prefs.getBoolean("sound_muted", false),
+                skippedUpdateVersionCode = prefs.getInt("skipped_update_version_code", 0)
+            )
         }
         val name = prefs.getString("profile_name", "Хранительница") ?: "Хранительница"
         val level = prefs.getInt("profile_level", 1)
@@ -1391,7 +1395,8 @@ class GameDataRepository(context: Context) {
             towerSavedEnemyHps = towerSavedEnemyHps,
             towerDeckHeroIds = towerDeckHeroIds,
             viewedGalleryImageKeys = viewedGalleryImageKeys,
-            isSoundMuted = prefs.getBoolean("sound_muted", false)
+            isSoundMuted = prefs.getBoolean("sound_muted", false),
+            skippedUpdateVersionCode = prefs.getInt("skipped_update_version_code", 0)
         )
     }
 
@@ -1593,7 +1598,7 @@ data class SaveImportResult(
         campaignClearCounts: Map<Int, Int> = emptyMap()
     ): String {
         val root = org.json.JSONObject()
-        root.put("version", "1.2 Release")
+        root.put("version", com.example.BuildConfig.VERSION_NAME)
         root.put("timestamp", System.currentTimeMillis())
 
         val pObj = org.json.JSONObject().apply {
@@ -1640,6 +1645,7 @@ data class SaveImportResult(
             put("towerDeckHeroIds", org.json.JSONArray(profile.towerDeckHeroIds.map { it ?: "" }))
             put("viewedGalleryImageKeys", org.json.JSONArray(profile.viewedGalleryImageKeys.toList()))
             put("isSoundMuted", profile.isSoundMuted)
+            put("skippedUpdateVersionCode", profile.skippedUpdateVersionCode)
         }
         root.put("profile", pObj)
 
@@ -1792,7 +1798,8 @@ data class SaveImportResult(
                 towerSavedEnemyHps = towerSavedHpsList,
                 towerDeckHeroIds = towerDeckList,
                 viewedGalleryImageKeys = viewedGallerySet,
-                isSoundMuted = pObj.optBoolean("isSoundMuted", false)
+                isSoundMuted = pObj.optBoolean("isSoundMuted", false),
+                skippedUpdateVersionCode = pObj.optInt("skippedUpdateVersionCode", 0)
             )
 
             val hArray = root.optJSONArray("heroes")

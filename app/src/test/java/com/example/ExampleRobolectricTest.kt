@@ -169,7 +169,7 @@ class ExampleRobolectricTest {
         val testClears = mapOf(101 to 7, 102 to 2)
 
         val json = repo.exportSaveToJson(profile, heroes, artifacts, testStars, testClears)
-        assertTrue("JSON should contain version", json.contains("\"version\": \"1.2 Release\""))
+        assertTrue("JSON should contain version", json.contains("\"version\": \"${com.example.BuildConfig.VERSION_NAME}\""))
         assertTrue("JSON should contain player name", json.contains("Тестовый Игрок"))
         assertTrue("JSON should contain campaignStars", json.contains("campaignStars"))
         assertTrue("JSON should contain campaignClearCounts", json.contains("campaignClearCounts"))
@@ -4468,6 +4468,105 @@ class ExampleRobolectricTest {
             assertTrue("Export/import JSON must keep isSoundMuted=true", imported?.first?.isSoundMuted == true)
         } finally {
             com.example.audio.GameAudioManager.resetForTesting(muted = false)
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun `github apk update checker parses version json validates trusted url respects skipped version and names apk consistently`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+
+        try {
+            // 1. APK filename naming convention: plump_heroes_{version}.apk
+            assertEquals("plump_heroes_1.3.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3"))
+            assertEquals("plump_heroes_1.4_Beta.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.4 Beta"))
+
+            // 2. Parse valid remote version.json for fatanime/plump_heroes
+            val validJson = """
+                {
+                  "versionCode": 32,
+                  "versionName": "1.4",
+                  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1.4.apk",
+                  "changelogRu": "Новый режим и баланс",
+                  "changelogEn": "New mode and balance"
+                }
+            """.trimIndent()
+            val parsed = com.example.network.AppUpdateChecker.parseRemoteVersionJson(validJson)
+            assertNotNull(parsed)
+            assertEquals(32, parsed!!.versionCode)
+            assertEquals("1.4", parsed.versionName)
+            assertEquals("Новый режим и баланс", parsed.changelogRu)
+            assertEquals("New mode and balance", parsed.changelogEn)
+
+            // 3. Reject untrusted/non-HTTPS URLs
+            val untrustedJson = """
+                {
+                  "versionCode": 32,
+                  "versionName": "1.4",
+                  "apkUrl": "https://evil.example.com/app.apk"
+                }
+            """.trimIndent()
+            assertNull(com.example.network.AppUpdateChecker.parseRemoteVersionJson(untrustedJson))
+
+            // 4. Version comparison & skipped version behavior (automatic vs manual)
+            assertTrue(
+                com.example.network.AppUpdateChecker.shouldNotifyUpdate(
+                    remote = parsed,
+                    installedVersionCode = 31,
+                    skippedVersionCode = 0,
+                    ignoreSkipped = false
+                )
+            )
+            assertFalse(
+                com.example.network.AppUpdateChecker.shouldNotifyUpdate(
+                    remote = parsed,
+                    installedVersionCode = 32,
+                    skippedVersionCode = 0,
+                    ignoreSkipped = true
+                )
+            )
+            assertFalse(
+                com.example.network.AppUpdateChecker.shouldNotifyUpdate(
+                    remote = parsed,
+                    installedVersionCode = 31,
+                    skippedVersionCode = 32,
+                    ignoreSkipped = false
+                )
+            )
+            assertTrue(
+                com.example.network.AppUpdateChecker.shouldNotifyUpdate(
+                    remote = parsed,
+                    installedVersionCode = 31,
+                    skippedVersionCode = 32,
+                    ignoreSkipped = true
+                )
+            )
+
+            // 5. Fallback branch check (main returns null -> master succeeds)
+            val fallbackOutcome = kotlinx.coroutines.runBlocking {
+                com.example.network.AppUpdateChecker.checkRemoteVersion(
+                    installedVersionCode = 31,
+                    installedVersionName = "1.3",
+                    skippedVersionCode = 0,
+                    ignoreSkipped = false,
+                    httpFetcher = { url -> if (url.contains("/master/")) validJson else null }
+                )
+            }
+            assertTrue(fallbackOutcome is com.example.network.AppUpdateCheckOutcome.UpdateAvailable)
+            assertEquals(32, (fallbackOutcome as com.example.network.AppUpdateCheckOutcome.UpdateAvailable).info.versionCode)
+
+            // 6. Persist skippedUpdateVersionCode across SharedPreferences & JSON export/import
+            val profile = PlayerProfile(name = "Обновление", skippedUpdateVersionCode = 32)
+            repo.savePlayerProfile(profile)
+            assertEquals(32, repo.loadPlayerProfile().skippedUpdateVersionCode)
+
+            val exported = repo.exportSaveToJson(profile, repo.getInitialHeroCards(), repo.getInitialArtifacts(), emptyMap())
+            val imported = repo.importSaveFromJson(exported, repo.getInitialHeroCards())
+            assertEquals(32, imported?.first?.skippedUpdateVersionCode)
+        } finally {
             prefs.edit().clear().commit()
         }
     }

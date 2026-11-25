@@ -75,6 +75,9 @@ fun MainScreen(viewModel: GameViewModel) {
     val isColiseumPreviewVisible by viewModel.isColiseumPreviewVisible.collectAsStateWithLifecycle()
     val showColiseumTutorial by viewModel.showColiseumTutorial.collectAsStateWithLifecycle()
     val coliseumMilestoneBonusOffer by viewModel.coliseumMilestoneBonusOffer.collectAsStateWithLifecycle()
+    val availableAppUpdate by viewModel.availableAppUpdate.collectAsStateWithLifecycle()
+    val isCheckingForUpdate by viewModel.isCheckingForUpdate.collectAsStateWithLifecycle()
+    val updateCheckStatusMessage by viewModel.updateCheckStatusMessage.collectAsStateWithLifecycle()
     val unclaimedQuestsCount = remember(dailyQuests) {
         dailyQuests.count { it.isCompleted && !it.isRewardClaimed }
     }
@@ -109,6 +112,7 @@ fun MainScreen(viewModel: GameViewModel) {
     // Back handling
     BackHandler(enabled = true) {
         when {
+            availableAppUpdate != null -> viewModel.dismissAvailableAppUpdate()
             showBonusStageImage -> showBonusStageImage = false
             showCurrencyExchangeDialog -> showCurrencyExchangeDialog = false
             levelUpRewardPopup != null -> viewModel.dismissLevelUpRewardPopup()
@@ -119,7 +123,10 @@ fun MainScreen(viewModel: GameViewModel) {
             isWorldLoreOpen -> isWorldLoreOpen = false
             !playerProfile.isStoryRead -> { /* Read lore first */ }
             isTutorialActive -> { /* Block back action while tutorial is active */ }
-            isSettingsOpen -> isSettingsOpen = false
+            isSettingsOpen -> {
+                viewModel.clearUpdateCheckStatus()
+                isSettingsOpen = false
+            }
             inspectedHero != null -> viewModel.inspectHero(null)
             battleState != null -> viewModel.exitBattle()
             isColiseumOpen -> {
@@ -146,15 +153,30 @@ fun MainScreen(viewModel: GameViewModel) {
 
     // If in Settings, show full screen Settings
     if (isSettingsOpen) {
-        SettingsScreen(
-            profile = playerProfile,
-            onUpdateName = { newName -> viewModel.updatePlayerName(newName) },
-            onToggleGoogleSync = { enable, email -> viewModel.toggleGoogleSync(enable, email) },
-            onToggleSoundMuted = { viewModel.toggleSoundMuted() },
-            onExportJson = { viewModel.exportSaveToJson() },
-            onImportJson = { json -> viewModel.importSaveFromJson(json) },
-            onBack = { isSettingsOpen = false }
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            SettingsScreen(
+                profile = playerProfile,
+                onUpdateName = { newName -> viewModel.updatePlayerName(newName) },
+                onToggleGoogleSync = { enable, email -> viewModel.toggleGoogleSync(enable, email) },
+                onToggleSoundMuted = { viewModel.toggleSoundMuted() },
+                isCheckingForUpdate = isCheckingForUpdate,
+                updateStatusMessage = updateCheckStatusMessage,
+                onCheckForUpdates = { viewModel.checkForAppUpdates(manual = true) },
+                onExportJson = { viewModel.exportSaveToJson() },
+                onImportJson = { json -> viewModel.importSaveFromJson(json) },
+                onBack = {
+                    viewModel.clearUpdateCheckStatus()
+                    isSettingsOpen = false
+                }
+            )
+            availableAppUpdate?.let { updateInfo ->
+                com.example.ui.components.AppUpdateDialog(
+                    updateInfo = updateInfo,
+                    onDismissLater = { viewModel.dismissAvailableAppUpdate() },
+                    onSkipVersion = { viewModel.skipAvailableAppUpdate() }
+                )
+            }
+        }
         return
     }
 
@@ -333,7 +355,7 @@ fun MainScreen(viewModel: GameViewModel) {
                                         )
                                     }
                                     Text(
-                                        text = "🏆 ${playerProfile.trophies} • 1.2 Release",
+                                        text = "🏆 ${playerProfile.trophies} • ${com.example.BuildConfig.VERSION_NAME}",
                                         fontSize = 9.sp,
                                         color = Color(0xFFFFCA28),
                                         maxLines = 1,
@@ -1118,6 +1140,25 @@ fun MainScreen(viewModel: GameViewModel) {
                     onClaimReward = { questId -> viewModel.claimDailyQuestReward(questId) },
                     onDismiss = { showDailyQuestsDialog = false }
                 )
+            }
+
+            // Remote GitHub APK Update Dialog (shown cleanly after onboarding & daily popups)
+            if (
+                playerProfile.isStoryRead &&
+                !isTutorialActive &&
+                !isWorldLoreOpen &&
+                dailyReward == null &&
+                fortuneWheelOffer == null &&
+                !showCampaign100AchievementDialog &&
+                !showDailyQuestsDialog
+            ) {
+                availableAppUpdate?.let { updateInfo ->
+                    com.example.ui.components.AppUpdateDialog(
+                        updateInfo = updateInfo,
+                        onDismissLater = { viewModel.dismissAvailableAppUpdate() },
+                        onSkipVersion = { viewModel.skipAvailableAppUpdate() }
+                    )
+                }
             }
 
             // Animated Chest Opening & Loot Reveal Dialog
