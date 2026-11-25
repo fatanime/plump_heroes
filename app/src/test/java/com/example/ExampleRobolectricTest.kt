@@ -4570,4 +4570,61 @@ class ExampleRobolectricTest {
             prefs.edit().clear().commit()
         }
     }
+
+    @Test
+    fun `8bit chiptune synthesizer renders clean non-clipping PCM across full menu battle boss loops and one-shot SFX terminate`() {
+        val sampleRate = 44100
+        val synth = com.example.audio.ChiptuneAudioSynthesizer(sampleRate)
+        val buffer = ShortArray(2048)
+
+        // Verify all 3 looping themes render active musical signal across 18 seconds without clipping/zeroing out
+        val loopingModes = listOf(
+            com.example.audio.AudioTrackMode.MENU_TAVERN,
+            com.example.audio.AudioTrackMode.BATTLE_NORMAL,
+            com.example.audio.AudioTrackMode.BATTLE_BOSS
+        )
+        for (mode in loopingModes) {
+            synth.reset()
+            var peak = 0
+            var finished = false
+            // Render ~18 seconds
+            for (chunk in 0 until 390) {
+                if (synth.renderChunk(mode, chunk * 2048L, buffer)) {
+                    finished = true
+                }
+                for (sample in buffer) {
+                    val absSample = kotlin.math.abs(sample.toInt())
+                    if (absSample > peak) peak = absSample
+                }
+            }
+            assertFalse("Looping theme $mode must never signal one-shot finished", finished)
+            assertTrue("Looping theme $mode must produce audible output (peak=$peak)", peak > 3000)
+            assertTrue("Looping theme $mode must avoid hard digital clipping (peak=$peak)", peak < 32700)
+        }
+
+        // Verify one-shot SFX produce audio and signal completion within ~3 seconds
+        val oneShotModes = listOf(
+            com.example.audio.AudioTrackMode.SFX_VICTORY,
+            com.example.audio.AudioTrackMode.SFX_DEFEAT
+        )
+        for (sfx in oneShotModes) {
+            synth.reset()
+            var finished = false
+            var peak = 0
+            for (chunk in 0 until 70) {
+                if (synth.renderChunk(sfx, chunk * 2048L, buffer)) {
+                    finished = true
+                }
+                for (sample in buffer) {
+                    val absSample = kotlin.math.abs(sample.toInt())
+                    if (absSample > peak) peak = absSample
+                }
+            }
+            assertTrue("One-shot SFX $sfx must report finished=true", finished)
+            assertTrue("One-shot SFX $sfx must produce audible output (peak=$peak)", peak > 3000)
+        }
+
+        // Verify apk filename for 1.3.0
+        assertEquals("plump_heroes_1.3.0.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3.0"))
+    }
 }

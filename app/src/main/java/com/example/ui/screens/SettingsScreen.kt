@@ -648,8 +648,8 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Добавлены фильтры по стихиям и значки стихий на картах, средневековая лаундж-музыка в меню, боевая и босс-темы, отключение звука и проверка обновлений через GitHub!",
-                                "Added element badges and filters on hero cards, calm medieval lounge menu music, battle and boss themes, persistent sound mute, and GitHub update checks!"
+                                "Добавлены фильтры по стихиям и значки стихий на картах, 8-битная приключенческая музыка для меню и битв, отключение звука и проверка обновлений через GitHub!",
+                                "Added element badges and filters on hero cards, 8-bit adventure music for menu and battles, persistent sound mute, and GitHub update checks!"
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),

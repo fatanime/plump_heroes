@@ -6,10 +6,9 @@ import android.media.AudioTrack
 import android.os.Build
 import com.example.model.BattlePhase
 import com.example.model.BattleState
-import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.pow
-import kotlin.math.sin
+import kotlin.math.roundToInt
 import kotlin.math.tanh
 
 enum class AudioTrackMode {
@@ -35,13 +34,12 @@ fun isOneShotAudioMode(mode: AudioTrackMode): Boolean {
 }
 
 /**
- * Self-contained procedural game music and SFX engine backed by Android [AudioTrack].
- * Synthesizes 3 looping themes (calm medieval tavern, battle, serious boss battle)
- * and 2 one-shot outcome sounds (victory fanfare, defeat fail) with zero extra APK bloat.
+ * Retro 8-bit chiptune audio engine (NES 2A03-style Pulse, Triangle, and Stepped Noise)
+ * powered by continuous phase accumulators so melodies remain crisp, melodic, and pitch-locked.
  */
 object GameAudioManager {
-    private const val SAMPLE_RATE = 22050
-    private const val CHUNK_SAMPLES = 1024
+    private const val SAMPLE_RATE = 44100
+    private const val CHUNK_SAMPLES = 2048
 
     private val lock = Any()
 
@@ -145,7 +143,7 @@ object GameAudioManager {
     private fun runAudioLoop() {
         var audioTrack: AudioTrack? = null
         val pcmBuffer = ShortArray(CHUNK_SAMPLES)
-        val synth = FantasyAudioSynthesizer(SAMPLE_RATE)
+        val synth = ChiptuneAudioSynthesizer(SAMPLE_RATE)
         var lastRenderedMode = AudioTrackMode.SILENT
 
         try {
@@ -184,7 +182,7 @@ object GameAudioManager {
                             audioTrack.flush()
                         }
                         isPlaying = false
-                        synth.resetFilters()
+                        synth.reset()
                         lastRenderedMode = AudioTrackMode.SILENT
                     }
                     Thread.sleep(60L)
@@ -192,7 +190,7 @@ object GameAudioManager {
                 }
 
                 if (activeMode != lastRenderedMode) {
-                    synth.resetFilters()
+                    synth.reset()
                     lastRenderedMode = activeMode
                     if (isPlaying) {
                         runCatching { audioTrack.flush() }
@@ -207,7 +205,7 @@ object GameAudioManager {
                 val startCursor = synchronized(lock) { sampleCursor }
                 val finished = synth.renderChunk(activeMode, startCursor, pcmBuffer)
                 synchronized(lock) {
-                    if (logicalMode == activeMode || (activeMode == getEffectivePlaybackMode())) {
+                    if (logicalMode == activeMode || activeMode == getEffectivePlaybackMode()) {
                         sampleCursor = startCursor + CHUNK_SAMPLES
                         if (finished && isOneShotAudioMode(activeMode)) {
                             oneShotFinished = true
@@ -232,39 +230,104 @@ object GameAudioManager {
     }
 }
 
-private class FantasyAudioSynthesizer(private val sampleRate: Int) {
-    private var lpState = 0.0
-    private var lpBossState = 0.0
-    private val reverbDelayA = DoubleArray((sampleRate * 0.089).toInt())
-    private val reverbDelayB = DoubleArray((sampleRate * 0.137).toInt())
-    private var revIdxA = 0
-    private var revIdxB = 0
-    private var noiseSeed = 0x13579BDF
+/**
+ * Pure 8-bit chiptune synthesizer with per-channel continuous phase accumulators.
+ * Models NES 2A03 hardware channels: 2 Pulse channels (lead & harmony/arp),
+ * 1 4-bit quantized Triangle bass channel, and 1 stepped LFSR-style Noise channel.
+ */
+internal class ChiptuneAudioSynthesizer(private val sampleRate: Int) {
+    private val dt = 1.0 / sampleRate.toDouble()
 
-    fun resetFilters() {
-        lpState = 0.0
-        lpBossState = 0.0
-        reverbDelayA.fill(0.0)
-        reverbDelayB.fill(0.0)
-        revIdxA = 0
-        revIdxB = 0
+    // Continuous phase accumulators (eliminates frequency-modulation pitch drift / theremin artifacts)
+    private var leadPhase = 0.0
+    private var harmPhase = 0.0
+    private var bassPhase = 0.0
+    private var sfxExtraPhase = 0.0
+
+    // Stepped 8-bit noise generator
+    private var lfsr = 0x7FFF
+    private var noiseSample = 0.0
+    private var noiseTickCounter = 0
+
+    // Gentle output smoothing to tame harsh Nyquist aliasing on 8-bit square edges
+    private var toneLpState = 0.0
+    private var dcPrevIn = 0.0
+    private var dcPrevOut = 0.0
+
+    // Precomputed MIDI -> Hz table for crisp integer pitches
+    private val midiHz = DoubleArray(128) { midi ->
+        440.0 * Math.pow(2.0, (midi - 69) / 12.0)
     }
 
-    private fun nextNoise(): Double {
-        noiseSeed = noiseSeed * 1664525 + 1013904223
-        return ((noiseSeed shr 16) and 0xFFFF) / 32768.0 - 1.0
+    fun reset() {
+        leadPhase = 0.0
+        harmPhase = 0.0
+        bassPhase = 0.0
+        sfxExtraPhase = 0.0
+        lfsr = 0x7FFF
+        noiseSample = 0.0
+        noiseTickCounter = 0
+        toneLpState = 0.0
+        dcPrevIn = 0.0
+        dcPrevOut = 0.0
     }
 
-    private fun midiToHz(midi: Int): Double = 440.0 * 2.0.pow((midi - 69) / 12.0)
+    private fun advancePhase(phase: Double, hz: Double): Double {
+        var next = phase + hz * dt
+        if (next >= 1.0) next -= next.toInt().toDouble()
+        return next
+    }
 
-    private fun applyRoomReverb(dry: Double, wetAmount: Double): Double {
-        val tapA = reverbDelayA[revIdxA]
-        val tapB = reverbDelayB[revIdxB]
-        reverbDelayA[revIdxA] = dry + tapB * 0.24
-        reverbDelayB[revIdxB] = dry + tapA * 0.20
-        revIdxA = (revIdxA + 1) % reverbDelayA.size
-        revIdxB = (revIdxB + 1) % reverbDelayB.size
-        return dry * (1.0 - wetAmount * 0.35) + (tapA + tapB) * 0.5 * wetAmount
+    private fun pulseWave(phase: Double, duty: Double): Double {
+        return if (phase < duty) 1.0 else -1.0
+    }
+
+    /** NES 4-bit quantized triangle wave (16 crisp stepped levels, iconic retro bass warmth). */
+    private fun nesTriangleWave(phase: Double): Double {
+        val raw = 1.0 - 4.0 * abs(phase - 0.5)
+        return ((raw * 7.5).roundToInt() / 7.5)
+    }
+
+    /** Clocked 15-bit LFSR noise (authentic 8-bit snare/hat grit). */
+    private fun steppedNoise(dividerSamples: Int): Double {
+        noiseTickCounter++
+        if (noiseTickCounter >= dividerSamples) {
+            noiseTickCounter = 0
+            val bit = ((lfsr shr 0) xor (lfsr shr 1)) and 1
+            lfsr = (lfsr shr 1) or (bit shl 14)
+            if (lfsr == 0) lfsr = 0x4A2B
+            noiseSample = if ((lfsr and 1) == 1) 1.0 else -1.0
+        }
+        return noiseSample
+    }
+
+    /** Note sustain helper across tied/repeated notes in a step grid. */
+    private fun readGridNote(
+        grid: IntArray,
+        stepIdx: Int,
+        stepT: Double,
+        stepSec: Double
+    ): Triple<Int, Double, Boolean> {
+        val midi = grid[stepIdx]
+        if (midi <= 0) return Triple(0, 0.0, false)
+        // -2 marks sustain continuation of previous note
+        var origin = stepIdx
+        while (origin > 0 && grid[origin] == -2) {
+            origin--
+        }
+        val activeMidi = grid[origin]
+        if (activeMidi <= 0) return Triple(0, 0.0, false)
+
+        var totalSteps = 1
+        var scan = origin + 1
+        while (scan < grid.size && grid[scan] == -2) {
+            totalSteps++
+            scan++
+        }
+        val elapsedInNote = (stepIdx - origin) * stepSec + stepT
+        val noteDur = totalSteps * stepSec
+        val isNearEnd = elapsedInNote > (noteDur - 0.018)
+        return Triple(activeMidi, elapsedInNote, isNearEnd)
     }
 
     /** Returns true if a one-shot SFX finished within this chunk. */
@@ -272,302 +335,348 @@ private class FantasyAudioSynthesizer(private val sampleRate: Int) {
         var finished = false
         for (i in out.indices) {
             val s = startSample + i
-            val t = s.toDouble() / sampleRate.toDouble()
-            val sampleVal = when (mode) {
-                AudioTrackMode.MENU_TAVERN -> synthesizeTavernSample(t)
-                AudioTrackMode.BATTLE_NORMAL -> synthesizeBattleNormalSample(t)
-                AudioTrackMode.BATTLE_BOSS -> synthesizeBattleBossSample(t)
+            val t = s * dt
+            val raw = when (mode) {
+                AudioTrackMode.MENU_TAVERN -> renderMenuTravelOverworld(t)
+                AudioTrackMode.BATTLE_NORMAL -> renderBattleQuestMarch(t)
+                AudioTrackMode.BATTLE_BOSS -> renderBattleDungeonBoss(t)
                 AudioTrackMode.SFX_VICTORY -> {
-                    if (t >= 2.85) finished = true
-                    synthesizeVictoryFanfare(t)
+                    if (t >= 2.35) finished = true
+                    renderVictoryFanfare8Bit(t)
                 }
                 AudioTrackMode.SFX_DEFEAT -> {
-                    if (t >= 2.55) finished = true
-                    synthesizeDefeatFail(t)
+                    if (t >= 2.15) finished = true
+                    renderDefeatMotif8Bit(t)
                 }
                 AudioTrackMode.SILENT -> 0.0
             }
-            val clipped = tanh(sampleVal * 0.85)
-            out[i] = (clipped * 26000.0).toInt().coerceIn(-32767, 32767).toShort()
+            // Warm analog-console low-pass (~5.8 kHz at 44.1k) + DC blocker
+            toneLpState += 0.56 * (raw - toneLpState)
+            val dcFree = toneLpState - dcPrevIn + 0.996 * dcPrevOut
+            dcPrevIn = toneLpState
+            dcPrevOut = dcFree
+
+            val limited = tanh(dcFree * 0.92)
+            out[i] = (limited * 24500.0).toInt().coerceIn(-32767, 32767).toShort()
         }
         return finished
     }
 
-    // THEME 1: Calm Medieval Lounge (E Minor/Aeolian, same fantasy tonality as Battle Normal, slow warm pads + soft harp + alto flute + gentle bodhran pulse)
-    private fun synthesizeTavernSample(t: Double): Double {
-        val stepSec = 0.36
+    // =========================================================================================
+    // THEME 1 (MENU): Calm & Hopeful 8-bit Hyrule Journey / Village Overworld (G Major, ~115 BPM)
+    // -2 = hold previous note, -1 = rest
+    // =========================================================================================
+    private val menuLeadGrid = intArrayOf(
+        // Bar 1 (G): B4.. D5 G5 | Bar 2 (D/F#): F#5. D5 A4..
+        71, -2, 74, 79, 78, -2, 74, 69,
+        // Bar 3 (Em): G4.. B4 E5 | Bar 4 (Bm): D5.. B4. -
+        67, -2, 71, 76, 74, -2, 71, -1,
+        // Bar 5 (C): C5.. E5 G5 | Bar 6 (G): D5.. B4 G4
+        72, -2, 76, 79, 74, -2, 71, 67,
+        // Bar 7 (Am): A4.. C5 E5 | Bar 8 (D7): D5.. - -
+        69, -2, 72, 76, 74, -2, -2, -1,
+        // Bar 9 (G): B4. D5 G5 A5 | Bar 10 (D): F#5.. D5. -
+        71, -2, 74, 79, 81, -2, 78, 74,
+        // Bar 11 (Em): G5.. E5 B4 | Bar 12 (C): C5. E5 G5. -
+        79, -2, 76, 71, 72, -2, 76, 79,
+        // Bar 13 (Am): A5. G5 F#5 E5 | Bar 14 (D): D5. A4 B4 C5
+        81, 79, 78, 76, 74, -2, 69, 72,
+        // Bar 15 (G): B4.. G4 D4 | Bar 16 (G->D): G4.. - -
+        71, -2, 67, 62, 67, -2, -2, -1
+    )
+
+    private val menuArpNotes = intArrayOf(
+        // 16 groups of 4-step gentle broken chord notes (1 note per step)
+        55, 59, 62, 59,  54, 57, 62, 57,  52, 55, 59, 55,  59, 62, 66, 62,
+        48, 52, 55, 52,  55, 59, 62, 59,  57, 60, 64, 60,  50, 54, 57, 60,
+        55, 59, 62, 59,  54, 57, 62, 57,  52, 55, 59, 55,  48, 52, 55, 52,
+        57, 60, 64, 60,  50, 54, 57, 54,  55, 59, 62, 59,  55, 59, 57, 54
+    )
+
+    private val menuBassRoots = intArrayOf(
+        43, 42, 40, 47, 48, 43, 45, 38,
+        43, 42, 40, 48, 45, 38, 43, 43
+    )
+
+    private fun renderMenuTravelOverworld(t: Double): Double {
+        val stepSec = 0.26
         val totalSteps = 64
-        val loopDur = totalSteps * stepSec
-        val loopT = t % loopDur
-        val stepIdx = ((loopT / stepSec).toInt()).coerceIn(0, totalSteps - 1)
+        val loopT = t % (totalSteps * stepSec)
+        val stepIdx = (loopT / stepSec).toInt().coerceIn(0, totalSteps - 1)
         val stepT = loopT - stepIdx * stepSec
 
-        // 8-bar lounge progression in E Minor (matching Battle Normal's tonal world):
-        // Em9 -> Cmaj7 -> Am9 -> Bm7 -> Em9 -> Gmaj7 -> Dadd9 -> Bm7
-        val chordRoots = intArrayOf(40, 36, 45, 47, 40, 43, 38, 47)   // E2, C2, A2, B2, E2, G2, D2, B2
-        val chordFifths = intArrayOf(47, 43, 52, 54, 47, 50, 45, 54)  // B2, G2, E3, F#3, B2, D3, A2, F#3
-        val chordThirds = intArrayOf(55, 52, 60, 62, 55, 59, 54, 62)  // G3, E3, C4, D4, G3, B3, F#3, D4
-        val chordNinths = intArrayOf(54, 59, 59, 57, 54, 57, 52, 57)  // F#3, B3, B3, A3, F#3, A3, E3, A3
-        val barIdx = (stepIdx / 8).coerceIn(0, 7)
-        val barT = loopT - barIdx * (8 * stepSec)
-        val barDur = 8 * stepSec
-
-        // 1. Warm velvet string/lounge pad (slow swell with subtle chorus warmth)
-        val padAtk = (1.0 - exp(-barT * 2.2))
-        val padRel = exp(-maxOf(0.0, barT - barDur * 0.72) * 2.5)
-        val padBreath = 0.88 + 0.12 * sin(2.0 * PI * 0.28 * t)
-        val rHz = midiToHz(chordRoots[barIdx] + 12)
-        val fHz = midiToHz(chordFifths[barIdx] + 12)
-        val tHz = midiToHz(chordThirds[barIdx])
-        val nHz = midiToHz(chordNinths[barIdx] + 12)
-        val padRaw = (
-            sin(2.0 * PI * rHz * t) * 0.42 +
-                sin(2.0 * PI * rHz * 1.003 * t) * 0.25 +
-                sin(2.0 * PI * fHz * t) * 0.28 +
-                sin(2.0 * PI * tHz * t) * 0.22 +
-                sin(2.0 * PI * nHz * t) * 0.16
-            ) * padAtk * padRel * padBreath * 0.22
-
-        // 2. Soft plucked medieval harp arpeggio (gentle, rounded overtones, zero harshness)
-        val arpMidi = when (stepIdx % 8) {
-            0 -> chordRoots[barIdx] + 12
-            1 -> chordFifths[barIdx] + 12
-            2 -> chordNinths[barIdx] + 12
-            3 -> chordThirds[barIdx] + 12
-            4 -> chordFifths[barIdx] + 12
-            5 -> chordNinths[barIdx] + 12
-            6 -> chordThirds[barIdx]
-            else -> chordFifths[barIdx] + 12
-        }
-        val harpHz = midiToHz(arpMidi)
-        val harpPhase = 2.0 * PI * harpHz * stepT
-        val harpEnv = (1.0 - exp(-stepT * 52.0)) * exp(-stepT * 3.1)
-        val harpVoice = (
-            sin(harpPhase) +
-                0.26 * exp(-stepT * 5.0) * sin(2.0 * harpPhase) +
-                0.08 * exp(-stepT * 9.0) * sin(3.0 * harpPhase)
-            ) * harpEnv * 0.21
-
-        // 3. Lyrical alto flute / soft strings lead in E minor (spacious, unhurried lounge phrases)
-        val loungeMelody = intArrayOf(
-            71, -1, 74, 76, 74, -1, 71, -1,
-            72, -1, 74, 76, 79, -1, 76, -1,
-            74, 72, 71, -1, 69, -1, 71, 72,
-            71, -1, 69, 66, 67, -1, -1, -1,
-            76, -1, 79, 78, 76, -1, 74, -1,
-            79, -1, 78, 76, 74, -1, 71, -1,
-            74, 72, 71, -1, 69, -1, 71, 74,
-            71, -1, -1, -1, 67, 66, -1, -1
-        )
-        val mMidi = loungeMelody[stepIdx]
-        val fluteVoice = if (mMidi > 0) {
-            val lHz = midiToHz(mMidi)
-            val vib = 1.0 + 0.0032 * sin(2.0 * PI * 4.2 * t)
-            val lPhase = 2.0 * PI * lHz * vib * t
-            val atk = 1.0 - exp(-stepT * 14.0)
-            val rel = exp(-maxOf(0.0, stepT - stepSec * 0.42) * 3.8)
-            val warmBody = sin(lPhase) + 0.22 * sin(2.0 * lPhase) + 0.07 * sin(3.0 * lPhase)
-            warmBody * atk * rel * 0.16
-        } else 0.0
-
-        // 4. Deep muted frame drum (soft lounge heartbeat on 0, gentle thumb on 4) + subtle shaker on 2, 6
-        val barStep = stepIdx % 8
-        val softFrameDrum = if (barStep == 0 || barStep == 4) {
-            val vol = if (barStep == 0) 0.14 else 0.08
-            val drop = 64.0 - 18.0 * (1.0 - exp(-stepT * 14.0))
-            sin(2.0 * PI * drop * stepT) * exp(-stepT * 7.5) * vol
-        } else 0.0
-        val softBrush = if (barStep == 2 || barStep == 6) {
-            nextNoise() * exp(-stepT * 18.0) * 0.022
-        } else 0.0
-
-        // Warm velvety lounge low-pass + spacious hall reverb
-        val raw = padRaw + harpVoice + fluteVoice + softFrameDrum + softBrush
-        lpState += 0.27 * (raw - lpState)
-        return applyRoomReverb(lpState, 0.40)
-    }
-
-    // THEME 2: Energetic Fantasy Battle (E Minor, driving 4/4 horns/strings + percussion)
-    private fun synthesizeBattleNormalSample(t: Double): Double {
-        val stepSec = 0.19
-        val totalSteps = 64
-        val loopDur = totalSteps * stepSec
-        val loopT = t % loopDur
-        val stepIdx = ((loopT / stepSec).toInt()).coerceIn(0, totalSteps - 1)
-        val stepT = loopT - stepIdx * stepSec
-
-        // 8-bar progression (8 eighths per bar): Em, Em, C, D, Em, G, D, Bm
-        val bassNotes = intArrayOf(40, 40, 36, 38, 40, 43, 38, 35)
-        val barIdx = (stepIdx / 8).coerceIn(0, 7)
-        val ostinatoHz = midiToHz(bassNotes[barIdx])
-        val ostEnv = (1.0 - exp(-stepT * 140.0)) * exp(-stepT * 7.5)
-        val ostPhase = 2.0 * PI * ostinatoHz * stepT
-        val ostinato = (
-            sin(ostPhase) +
-                0.55 * sin(2.0 * ostPhase) +
-                0.35 * sin(1.5 * ostPhase) // Fifth power-chord drive
-            ) * ostEnv * 0.22
-
-        val leadMelody = intArrayOf(
-            76, 76, 79, 78, 76, 74, 71, -1,
-            76, 79, 81, 79, 78, 76, 74, -1,
-            72, 74, 76, 79, 78, 74, 76, 72,
-            74, 74, 76, 78, 79, 78, 74, -1,
-            76, 79, 83, 81, 79, 78, 76, 74,
-            79, 79, 83, 81, 79, 76, 74, -1,
-            74, 76, 78, 79, 81, 79, 78, 74,
-            76, -1, 74, 71, 76, 76, -1, -1
-        )
-        val leadMidi = leadMelody[stepIdx]
+        // 1. Lead: warm 50% hollow NES square (calm Zelda village/camp travel flute tone)
+        val (leadMidi, noteT, nearEnd) = readGridNote(menuLeadGrid, stepIdx, stepT, stepSec)
         val leadVoice = if (leadMidi > 0) {
-            val lHz = midiToHz(leadMidi)
-            val lPhase = 2.0 * PI * lHz * t
-            val atk = 1.0 - exp(-stepT * 42.0)
-            val rel = exp(-maxOf(0.0, stepT - stepSec * 0.35) * 6.5)
-            val horn = sin(lPhase) + 0.45 * sin(2.0 * lPhase) + 0.22 * sin(3.0 * lPhase)
-            horn * atk * rel * 0.22
+            leadPhase = advancePhase(leadPhase, midiHz[leadMidi])
+            val atk = (noteT / 0.012).coerceIn(0.0, 1.0)
+            val env = atk * (0.45 + 0.55 * exp(-noteT * 2.4)) * (if (nearEnd) 0.55 else 1.0)
+            pulseWave(leadPhase, 0.50) * env * 0.24
         } else 0.0
 
-        // Battle percussion: Timpani on steps 0, 4; Snare on steps 2, 6 (+ pickup on 7)
-        val barStep = stepIdx % 8
-        val timpani = if (barStep == 0 || barStep == 4) {
-            val pitchDrop = 95.0 - 45.0 * (1.0 - exp(-stepT * 28.0))
-            sin(2.0 * PI * pitchDrop * stepT) * exp(-stepT * 11.0) * 0.32
-        } else 0.0
-        val snare = if (barStep == 2 || barStep == 6 || (barStep == 7 && barIdx % 2 == 1)) {
-            nextNoise() * exp(-stepT * 24.0) * 0.14
+        // 2. Harmony: soft 25% pulse broken travel chords
+        val arpMidi = menuArpNotes[stepIdx]
+        harmPhase = advancePhase(harmPhase, midiHz[arpMidi])
+        val harmEnv = (stepT / 0.008).coerceIn(0.0, 1.0) * exp(-stepT * 7.2)
+        val harmVoice = pulseWave(harmPhase, 0.25) * harmEnv * 0.13
+
+        // 3. Bass: clean NES triangle (half-bar root -> fifth walking travel bass)
+        val barPairIdx = (stepIdx / 4).coerceIn(0, 15)
+        val bassMidi = if (stepIdx % 4 == 2) menuBassRoots[barPairIdx] + 7 else menuBassRoots[barPairIdx]
+        bassPhase = advancePhase(bassPhase, midiHz[bassMidi])
+        val bassEnv = if (stepIdx % 2 == 0) exp(-stepT * 2.8) else exp(-stepT * 4.5)
+        val bassVoice = nesTriangleWave(bassPhase) * bassEnv * 0.29
+
+        // 4. Light retro travel shaker on offbeats
+        val tick = if (stepIdx % 2 == 1) {
+            steppedNoise(6) * exp(-stepT * 48.0) * 0.045
         } else 0.0
 
-        val raw = ostinato + leadVoice + timpani + snare
-        lpState += 0.42 * (raw - lpState)
-        return applyRoomReverb(lpState, 0.24)
+        return leadVoice + harmVoice + bassVoice + tick
     }
 
-    // THEME 3: Serious & Powerful Boss Battle (D Harmonic Minor, pipe organ + dark brass + heavy war drums)
-    private fun synthesizeBattleBossSample(t: Double): Double {
-        val stepSec = 0.215
+    // =========================================================================================
+    // THEME 2 (BATTLE): Heroic 8-bit Zelda Overworld Adventure March (A Minor / C Major, ~166 BPM)
+    // =========================================================================================
+    private val battleLeadGrid = intArrayOf(
+        // Bar 1 (Am): A4 - A4 E5 | Bar 2: D5 C5 B4 A4
+        69, -1, 69, 76, 74, 72, 71, 69,
+        // Bar 3 (F): F5 - E5 D5 | Bar 4 (G): E5 - D5 B4
+        77, -1, 76, 74, 76, -1, 74, 71,
+        // Bar 5 (Am): C5 D5 E5 G5 | Bar 6 (E7): F5 E5 D5 B4
+        72, 74, 76, 79, 77, 76, 74, 71,
+        // Bar 7 (Am): A4 - E5 C5 | Bar 8 (E): B4 - - -
+        69, -1, 76, 72, 71, -2, -2, -1,
+        // B-Section (C -> G -> Am -> Em -> F -> G -> E7 -> Am heroic adventure theme)
+        // Bar 9 (C): G5 - E5 C5 | Bar 10 (G): D5 E5 F5 D5
+        79, -1, 76, 72, 74, 76, 77, 74,
+        // Bar 11 (Am): E5 - C5 A4 | Bar 12 (Em): B4 C5 D5 B4
+        76, -1, 72, 69, 71, 72, 74, 71,
+        // Bar 13 (F): C5 - F5 E5 | Bar 14 (G): D5 - G5 F5
+        72, -1, 77, 76, 74, -1, 79, 77,
+        // Bar 15 (E7): E5 D5 C5 B4 | Bar 16 (Am): A4 - - -
+        76, 74, 72, 71, 69, -2, -2, -1
+    )
+
+    private val battleBarRoots = intArrayOf(
+        // 16 four-step half-bar chunks
+        45, 45, 41, 43, 45, 40, 45, 40,
+        48, 43, 45, 40, 41, 43, 40, 45
+    )
+
+    private val battleBarFifths = intArrayOf(
+        52, 52, 48, 50, 52, 47, 52, 47,
+        55, 50, 52, 47, 48, 50, 47, 52
+    )
+
+    private val battleBarThirds = intArrayOf(
+        48, 48, 45, 47, 48, 44, 48, 44,
+        52, 47, 48, 43, 45, 47, 44, 48
+    )
+
+    private fun renderBattleQuestMarch(t: Double): Double {
+        val stepSec = 0.18
         val totalSteps = 64
-        val loopDur = totalSteps * stepSec
-        val loopT = t % loopDur
-        val stepIdx = ((loopT / stepSec).toInt()).coerceIn(0, totalSteps - 1)
+        val loopT = t % (totalSteps * stepSec)
+        val stepIdx = (loopT / stepSec).toInt().coerceIn(0, totalSteps - 1)
         val stepT = loopT - stepIdx * stepSec
+        val barChunk = (stepIdx / 4).coerceIn(0, 15)
 
-        // Boss progression: Dm -> Bb -> Gm -> A (with C# leading tone)
-        val roots = intArrayOf(38, 38, 34, 34, 31, 31, 33, 33)
-        val barIdx = (stepIdx / 8).coerceIn(0, 7)
-        val subStepT = stepT % (stepSec * 0.5)
-        val bassHz = midiToHz(roots[barIdx])
-        val bassEnv = (1.0 - exp(-subStepT * 160.0)) * exp(-subStepT * 12.0)
-        val bassOsc = sin(2.0 * PI * bassHz * subStepT) +
-            0.65 * sin(2.0 * PI * bassHz * 2.0 * subStepT) +
-            0.35 * sin(2.0 * PI * bassHz * 3.0 * subStepT)
-        val celloOstinato = bassOsc * bassEnv * 0.25
-
-        // Cathedral pipe organ + dark brass lead
-        val bossLead = intArrayOf(
-            62, -1, 65, 64, 61, -1, 62, -1,
-            62, 65, 69, 68, 69, -1, 65, 64,
-            70, -1, 69, 67, 65, 64, 62, -1,
-            67, 65, 64, 61, 62, -1, 57, -1,
-            74, -1, 77, 76, 73, -1, 74, -1,
-            70, 72, 74, 76, 77, -1, 76, 74,
-            79, -1, 77, 74, 76, 74, 73, 69,
-            74, -1, 73, 69, 74, 74, -1, -1
-        )
-        val bMidi = bossLead[stepIdx]
-        val brassChoir = if (bMidi > 0) {
-            val f = midiToHz(bMidi)
-            val atk = 1.0 - exp(-stepT * 30.0)
-            val rel = exp(-maxOf(0.0, stepT - stepSec * 0.45) * 4.5)
-            // Unison octave + pipe organ 3rd/4th harmonics
-            val wave = sin(2.0 * PI * f * t) +
-                0.70 * sin(2.0 * PI * (f * 0.5) * t) +
-                0.45 * sin(2.0 * PI * (f * 2.0) * t) +
-                0.22 * sin(2.0 * PI * (f * 3.0) * t)
-            wave * atk * rel * 0.20
+        // 1. Heroic 25% pulse lead (bright classic Zelda NES adventure fanfare tone)
+        val (leadMidi, noteT, nearEnd) = readGridNote(battleLeadGrid, stepIdx, stepT, stepSec)
+        val leadVoice = if (leadMidi > 0) {
+            leadPhase = advancePhase(leadPhase, midiHz[leadMidi])
+            val env = (noteT / 0.006).coerceIn(0.0, 1.0) *
+                (0.40 + 0.60 * exp(-noteT * 3.8)) *
+                (if (nearEnd) 0.50 else 1.0)
+            pulseWave(leadPhase, 0.25) * env * 0.25
         } else 0.0
 
-        // Heavy war taiko double strikes & crash on phrase downbeat
-        val barStep = stepIdx % 8
-        val warDrum = if (barStep == 0 || barStep == 1 || barStep == 4 || barStep == 6) {
-            val pitchDrop = 82.0 - 44.0 * (1.0 - exp(-stepT * 22.0))
-            sin(2.0 * PI * pitchDrop * stepT) * exp(-stepT * 8.5) * 0.36
+        // 2. Driving 12.5% pulse chord arpeggio (root-third-fifth-octave bounce)
+        val arpMidi = when (stepIdx % 4) {
+            0 -> battleBarRoots[barChunk] + 12
+            1 -> battleBarThirds[barChunk] + 12
+            2 -> battleBarFifths[barChunk] + 12
+            else -> battleBarRoots[barChunk] + 24
+        }
+        harmPhase = advancePhase(harmPhase, midiHz[arpMidi])
+        val harmEnv = exp(-stepT * 10.5)
+        val harmVoice = pulseWave(harmPhase, 0.125) * harmEnv * 0.12
+
+        // 3. Punchy NES triangle gallop bass (root on 0,2; fifth on 1,3)
+        val bassMidi = if (stepIdx % 2 == 0) battleBarRoots[barChunk] else battleBarFifths[barChunk]
+        bassPhase = advancePhase(bassPhase, midiHz[bassMidi])
+        val bassEnv = exp(-stepT * 4.5)
+        val bassVoice = nesTriangleWave(bassPhase) * bassEnv * 0.30
+
+        // 4. Crisp NES percussion (triangle kick pitch-drop on beat 0; noise snare on beat 2; hat on 1,3)
+        val beatPos = stepIdx % 4
+        val kick = if (beatPos == 0) {
+            val kHz = 55.0 + 95.0 * exp(-stepT * 45.0)
+            sfxExtraPhase = advancePhase(sfxExtraPhase, kHz)
+            nesTriangleWave(sfxExtraPhase) * exp(-stepT * 22.0) * 0.16
         } else 0.0
-        val cymbalCrash = if (stepIdx % 16 == 0) {
-            nextNoise() * exp(-loopT.rem(16 * stepSec) * 3.2) * 0.12
+        val snare = if (beatPos == 2 || (stepIdx % 8 == 7)) {
+            steppedNoise(10) * exp(-stepT * 28.0) * 0.11
+        } else if (beatPos == 1 || beatPos == 3) {
+            steppedNoise(3) * exp(-stepT * 55.0) * 0.045
         } else 0.0
 
-        val raw = celloOstinato + brassChoir + warDrum + cymbalCrash
-        lpBossState += 0.36 * (raw - lpBossState)
-        return applyRoomReverb(lpBossState, 0.34)
+        return leadVoice + harmVoice + bassVoice + kick + snare
     }
 
-    // SOUND 1: One-Shot Victory Fanfare (~2.8s, then silence)
-    private fun synthesizeVictoryFanfare(t: Double): Double {
-        if (t > 2.80) return 0.0
+    // =========================================================================================
+    // THEME 3 (BOSS BATTLE): Dramatic 8-bit Dungeon Citadel Showdown (D Minor, ~176 BPM)
+    // =========================================================================================
+    private val bossLeadGrid = intArrayOf(
+        // Urgent 8-bit castle theme: Dm -> Bb -> Gm -> A7
+        74, -1, 77, 76, 74, -1, 73, 74,
+        70, -1, 74, 72, 70, -1, 69, -1,
+        67, 70, 74, 72, 70, 69, 67, 65,
+        69, -1, 67, 64, 69, -2, 73, -1,
+        // High climax octave phrase
+        86, -1, 84, 82, 81, -1, 79, 77,
+        79, -1, 77, 76, 74, -1, 72, 70,
+        74, 76, 77, 79, 81, 79, 77, 76,
+        74, -1, 73, 69, 74, -2, -2, -1
+    )
 
-        fun brassNote(noteT: Double, hz: Double, dur: Double): Double {
-            if (noteT < 0.0 || noteT > dur) return 0.0
-            val env = (1.0 - exp(-noteT * 75.0)) * exp(-maxOf(0.0, noteT - dur * 0.45) * 5.2)
-            val p = 2.0 * PI * hz * noteT
-            return (sin(p) + 0.55 * sin(2.0 * p) + 0.30 * sin(3.0 * p) + 0.14 * sin(4.0 * p)) * env
-        }
+    private val bossRoots = intArrayOf(
+        38, 38, 34, 34, 31, 31, 33, 33,
+        38, 34, 36, 34, 31, 33, 38, 38
+    )
 
-        val sig = when {
-            t < 0.14 -> brassNote(t, midiToHz(67), 0.14) * 0.30 // G4
-            t < 0.28 -> brassNote(t - 0.14, midiToHz(72), 0.14) * 0.32 // C5
-            t < 0.42 -> brassNote(t - 0.28, midiToHz(76), 0.14) * 0.34 // E5
-            t < 0.78 -> brassNote(t - 0.42, midiToHz(79), 0.36) * 0.36 // G5
-            t < 0.96 -> brassNote(t - 0.78, midiToHz(76), 0.18) * 0.34 // E5
-            else -> {
-                val chordT = t - 0.96
-                val chordDur = 1.84
-                val env = (1.0 - exp(-chordT * 50.0)) * exp(-chordT * 1.8)
-                val c4 = brassNote(chordT, midiToHz(60), chordDur)
-                val g4 = brassNote(chordT, midiToHz(67), chordDur)
-                val c5 = brassNote(chordT, midiToHz(72), chordDur)
-                val e5 = brassNote(chordT, midiToHz(76), chordDur)
-                val g5 = brassNote(chordT, midiToHz(79), chordDur)
-                val bellC6 = sin(2.0 * PI * midiToHz(84) * chordT) * exp(-chordT * 2.5) * 0.18
-                val cymbal = nextNoise() * exp(-chordT * 3.5) * 0.12
-                (c4 + g4 + c5 + e5 + g5) * 0.13 * env + bellC6 + cymbal
-            }
-        }
-        val snareRoll = if (t < 0.42) nextNoise() * 0.08 * (1.0 - t / 0.45) else 0.0
-        val fadeTail = if (t > 2.55) ((2.80 - t) / 0.25).coerceIn(0.0, 1.0) else 1.0
-        lpState += 0.48 * ((sig + snareRoll) - lpState)
-        return applyRoomReverb(lpState, 0.35) * fadeTail
-    }
+    private val bossFifths = intArrayOf(
+        45, 45, 41, 41, 38, 38, 40, 40,
+        45, 41, 43, 41, 38, 40, 45, 45
+    )
 
-    // SOUND 2: One-Shot Defeat / Fail Motif (~2.5s, then silence)
-    private fun synthesizeDefeatFail(t: Double): Double {
-        if (t > 2.50) return 0.0
+    private fun renderBattleDungeonBoss(t: Double): Double {
+        val stepSec = 0.17
+        val totalSteps = 64
+        val loopT = t % (totalSteps * stepSec)
+        val stepIdx = (loopT / stepSec).toInt().coerceIn(0, totalSteps - 1)
+        val stepT = loopT - stepIdx * stepSec
+        val barChunk = (stepIdx / 4).coerceIn(0, 15)
 
-        fun mournfulHorn(noteT: Double, baseHz: Double, dur: Double, bendDown: Boolean = false): Double {
-            if (noteT < 0.0 || noteT > dur) return 0.0
-            val bendFactor = if (bendDown) {
-                1.0 - 0.08 * (noteT / dur) + 0.012 * sin(2.0 * PI * 4.5 * noteT)
-            } else 1.0
-            val f = baseHz * bendFactor
-            val env = (1.0 - exp(-noteT * 40.0)) * exp(-maxOf(0.0, noteT - dur * 0.35) * 3.2)
-            val p = 2.0 * PI * f * noteT
-            return (sin(p) + 0.48 * sin(2.0 * p) + 0.22 * sin(3.0 * p)) * env
-        }
-
-        val melody = when {
-            t < 0.36 -> mournfulHorn(t, midiToHz(55), 0.36) * 0.36 // G3
-            t < 0.72 -> mournfulHorn(t - 0.36, midiToHz(54), 0.36) * 0.36 // F#3
-            t < 1.08 -> mournfulHorn(t - 0.72, midiToHz(53), 0.36) * 0.36 // F3
-            else -> mournfulHorn(t - 1.08, midiToHz(52), 1.42, bendDown = true) * 0.40 // E3 -> sag down
-        }
-        val lowThud = if (t < 0.5 || (t in 1.08..1.8)) {
-            val thudT = if (t < 0.5) t else t - 1.08
-            val pitch = 68.0 - 28.0 * (1.0 - exp(-thudT * 18.0))
-            sin(2.0 * PI * pitch * thudT) * exp(-thudT * 5.5) * 0.24
+        // 1. Intense 25% pulse dark-castle lead
+        val (leadMidi, noteT, nearEnd) = readGridNote(bossLeadGrid, stepIdx, stepT, stepSec)
+        val leadVoice = if (leadMidi > 0) {
+            leadPhase = advancePhase(leadPhase, midiHz[leadMidi])
+            val env = (noteT / 0.005).coerceIn(0.0, 1.0) *
+                (0.45 + 0.55 * exp(-noteT * 3.2)) *
+                (if (nearEnd) 0.55 else 1.0)
+            pulseWave(leadPhase, 0.25) * env * 0.25
         } else 0.0
 
-        val fadeTail = if (t > 2.25) ((2.50 - t) / 0.25).coerceIn(0.0, 1.0) else 1.0
-        lpState += 0.32 * ((melody + lowThud) - lpState)
-        return applyRoomReverb(lpState, 0.28) * fadeTail
+        // 2. Rapid 16th-note baroque 8-bit arpeggio (50% pulse)
+        val subIdx = ((stepT / (stepSec * 0.5)).toInt()).coerceIn(0, 1)
+        val subT = stepT - subIdx * (stepSec * 0.5)
+        val root = bossRoots[barChunk] + 12
+        val arpMidi = when ((stepIdx * 2 + subIdx) % 4) {
+            0 -> root
+            1 -> root + 3
+            2 -> root + 7
+            else -> root + 12
+        }
+        harmPhase = advancePhase(harmPhase, midiHz[arpMidi])
+        val harmVoice = pulseWave(harmPhase, 0.50) * exp(-subT * 14.0) * 0.12
+
+        // 3. Relentless octave-jumping NES triangle bass
+        val bassMidi = if ((stepIdx * 2 + subIdx) % 2 == 0) bossRoots[barChunk] else bossFifths[barChunk]
+        bassPhase = advancePhase(bassPhase, midiHz[bassMidi])
+        val bassVoice = nesTriangleWave(bassPhase) * exp(-subT * 5.0) * 0.30
+
+        // 4. Driving boss snare & kick
+        val beatPos = stepIdx % 4
+        val kick = if (beatPos == 0 || beatPos == 3) {
+            val kHz = 48.0 + 105.0 * exp(-stepT * 52.0)
+            sfxExtraPhase = advancePhase(sfxExtraPhase, kHz)
+            nesTriangleWave(sfxExtraPhase) * exp(-stepT * 24.0) * 0.18
+        } else 0.0
+        val snare = if (beatPos == 2) {
+            steppedNoise(12) * exp(-stepT * 24.0) * 0.13
+        } else {
+            steppedNoise(4) * exp(-stepT * 60.0) * 0.045
+        }
+
+        return leadVoice + harmVoice + bassVoice + kick + snare
+    }
+
+    // =========================================================================================
+    // SOUND 1: Classic 8-bit Hero Victory Fanfare (~2.3s one-shot)
+    // =========================================================================================
+    private fun renderVictoryFanfare8Bit(t: Double): Double {
+        if (t > 2.30) return 0.0
+
+        val stepNote = when {
+            t < 0.13 -> 72 // C5
+            t < 0.26 -> 76 // E5
+            t < 0.39 -> 79 // G5
+            t < 0.72 -> 84 // C6
+            t < 0.88 -> 79 // G5
+            else -> 84     // C6 hold
+        }
+        val noteStart = when {
+            t < 0.13 -> 0.0
+            t < 0.26 -> 0.13
+            t < 0.39 -> 0.26
+            t < 0.72 -> 0.39
+            t < 0.88 -> 0.72
+            else -> 0.88
+        }
+        val noteElapsed = t - noteStart
+
+        leadPhase = advancePhase(leadPhase, midiHz[stepNote])
+        val leadEnv = if (t < 0.88) {
+            exp(-noteElapsed * 4.5)
+        } else {
+            exp(-noteElapsed * 2.1)
+        }
+        val lead = pulseWave(leadPhase, 0.25) * leadEnv * 0.28
+
+        val harmNote = if (t < 0.88) stepNote - 12 else 76 // E5 harmony on final chord
+        harmPhase = advancePhase(harmPhase, midiHz[harmNote])
+        val harm = pulseWave(harmPhase, 0.50) * leadEnv * 0.15
+
+        val bassNote = if (t < 0.39) 48 else if (t < 0.88) 55 else 48
+        bassPhase = advancePhase(bassPhase, midiHz[bassNote])
+        val bass = nesTriangleWave(bassPhase) * leadEnv * 0.24
+
+        val snareRoll = if (t < 0.38) steppedNoise(9) * 0.07 else if (t in 0.88..1.25) {
+            steppedNoise(10) * exp(-(t - 0.88) * 10.0) * 0.11
+        } else 0.0
+
+        val tailFade = if (t > 2.05) ((2.30 - t) / 0.25).coerceIn(0.0, 1.0) else 1.0
+        return (lead + harm + bass + snareRoll) * tailFade
+    }
+
+    // =========================================================================================
+    // SOUND 2: Classic 8-bit Defeat / Game Over Motif (~2.1s one-shot)
+    // =========================================================================================
+    private fun renderDefeatMotif8Bit(t: Double): Double {
+        if (t > 2.10) return 0.0
+
+        val (noteMidi, noteElapsed) = when {
+            t < 0.30 -> 67 to t                 // G4
+            t < 0.60 -> 66 to (t - 0.30)        // F#4
+            t < 0.90 -> 65 to (t - 0.60)        // F4
+            else -> 64 to (t - 0.90)            // E4
+        }
+        val hz = if (t >= 0.90) {
+            // Smooth continuous-phase retro pitch sag on final note
+            val sag = (1.0 - 0.06 * ((t - 0.90) / 1.20)).coerceIn(0.90, 1.0)
+            midiHz[noteMidi] * sag
+        } else midiHz[noteMidi]
+
+        leadPhase = advancePhase(leadPhase, hz)
+        val env = exp(-noteElapsed * if (t >= 0.90) 2.2 else 4.2)
+        val lead = pulseWave(leadPhase, 0.50) * env * 0.28
+
+        bassPhase = advancePhase(bassPhase, hz * 0.5)
+        val bass = nesTriangleWave(bassPhase) * env * 0.24
+
+        val tailFade = if (t > 1.85) ((2.10 - t) / 0.25).coerceIn(0.0, 1.0) else 1.0
+        return (lead + bass) * tailFade
     }
 }
