@@ -1,0 +1,6 @@
+{
+  "name": "Plump Heroes",
+  "description": "Карточная фэнтези RPG в стиле Card Heroes: битвы 2x2, коллекция обаятельных пышных героинь, редкие артефакты, Карьера и Арена.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1380 @@
+package com.example.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.i18n.localizedName
+import com.example.i18n.tr
+import com.example.model.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlin.random.Random
+
+/**
+ * ViewModel dedicated to the 2x2 turn-based battle logic.
+ * Manages turn-based phases, round progression, targeting validation,
+ * damage/armor calculation, floating combat texts, and health tracking
+ * for both Player and Enemy teams of Heroes.
+ */
+class BattleViewModel : ViewModel() {
+
+    private val _battleState = MutableStateFlow<BattleState?>(null)
+    val battleState: StateFlow<BattleState?> = _battleState.asStateFlow()
+
+    private var enemyTurnJob: Job? = null
+    private var autoBattleJob: Job? = null
+
+    private var onBattleEndCallback: ((isVictory: Boolean, state: BattleState) -> Unit)? = null
+    private var hapticTrigger: ((strong: Boolean) -> Unit)? = null
+    private var hasReportedBattleEnd: Boolean = false
+    internal var vasilisaCritRollOverride: Int? = null
+
+    fun setHapticCallback(callback: (strong: Boolean) -> Unit) {
+        this.hapticTrigger = callback
+    }
+
+    /**
+     * Initializes a new 2x2 battle between the player team and enemy team.
+     */
+    fun startBattle(
+        playerCards: List<BattleCard>,
+        enemyCards: List<BattleCard>,
+        enemyName: String,
+        enemyTitle: String,
+        isArena: Boolean,
+        rewardGold: Int,
+        rewardGems: Int,
+        rewardExp: Int,
+        rewardArtifact: Artifact? = null,
+        campaignChapter: Int = 1,
+        battleBgRes: Int = com.example.R.drawable.bg_brunhilde,
+        foundAmulet: DiscoveredAmulet? = null,
+        victoryEventMessage: String? = null,
+        campaignStageId: Int? = null,
+        initialPlayerMana: Int = 1,
+        initialEnemyMana: Int = 1,
+        isColiseum: Boolean = false,
+        coliseumBattleNumber: Int = 0,
+        coliseumAccumulatedGold: Int = 0,
+        coliseumAccumulatedGems: Int = 0,
+        isTower: Boolean = false,
+        towerFloor: Int = 0,
+        towerRuleLabel: String? = null,
+        isBoss: Boolean = false,
+        onBattleEnd: (isVictory: Boolean, state: BattleState) -> Unit
+    ) {
+        this.onBattleEndCallback = onBattleEnd
+        this.hasReportedBattleEnd = false
+
+        val isPlayerFirst = if (isArena && !isColiseum && !isTower) Random.nextBoolean() else true
+        val startPhase = if (isPlayerFirst) BattlePhase.PLAYER_TURN else BattlePhase.ENEMY_TURN
+        val startSpeaker = playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" }.randomOrNull()
+        val startQuote = startSpeaker?.let { pickHeroBattleQuote(it, QuoteContext.BATTLE_START) }
+        val initialLogs = if (startQuote != null) {
+            listOf(
+                BattleActionLog(
+                    id = System.currentTimeMillis(),
+                    text = "💬 ${startQuote.heroName}: «${startQuote.text}»",
+                    isPlayerAction = true
+                )
+            )
+        } else emptyList()
+
+        _battleState.value = BattleState(
+            round = 1,
+            phase = startPhase,
+            playerCards = playerCards,
+            enemyCards = enemyCards,
+            selectedPlayerSlot = if (isPlayerFirst) playerCards.firstOrNull { it.isAlive && !it.hasSkipTurnEffect }?.slotIndex else null,
+            enemyName = enemyName,
+            enemyTitle = enemyTitle,
+            isArena = isArena,
+            campaignChapter = campaignChapter,
+            rewardGold = rewardGold,
+            rewardGems = rewardGems,
+            rewardExp = rewardExp,
+            rewardArtifact = rewardArtifact,
+            battleBgRes = battleBgRes,
+            playerTeamMana = initialPlayerMana,
+            enemyTeamMana = initialEnemyMana,
+            actionLogs = initialLogs,
+            foundAmulet = foundAmulet,
+            victoryEventMessage = victoryEventMessage,
+            showArenaFirstTurnModal = isArena && !isColiseum && !isTower,
+            isPlayerFirstTurn = isPlayerFirst,
+            battleStartQuote = startQuote,
+            campaignStageId = campaignStageId,
+            isColiseum = isColiseum,
+            coliseumBattleNumber = coliseumBattleNumber,
+            coliseumAccumulatedGold = coliseumAccumulatedGold,
+            coliseumAccumulatedGems = coliseumAccumulatedGems,
+            isTower = isTower,
+            towerFloor = towerFloor,
+            towerRuleLabel = towerRuleLabel,
+            isBoss = isBoss
+        )
+    }
+
+    fun updateColiseumBattleOutcomeTotals(
+        accumulatedGold: Int,
+        accumulatedGems: Int,
+        consolationGold: Int,
+        consolationGems: Int
+    ) {
+        _battleState.update { current ->
+            current?.copy(
+                coliseumAccumulatedGold = accumulatedGold,
+                coliseumAccumulatedGems = accumulatedGems,
+                coliseumConsolationGold = consolationGold,
+                coliseumConsolationGems = consolationGems
+            )
+        }
+    }
+
+    /**
+     * Dismisses the Arena first-turn popup and launches the enemy turn if bot moves first.
+     */
+    fun dismissArenaFirstTurnModal() {
+        val state = _battleState.value ?: return
+        if (!state.showArenaFirstTurnModal) return
+        _battleState.update { it?.copy(showArenaFirstTurnModal = false) }
+        if (!state.isPlayerFirstTurn && state.phase == BattlePhase.ENEMY_TURN) {
+            executeEnemyTurn()
+        }
+    }
+
+    internal data class DotTickResult(
+        val texts: List<FloatingCombatText>,
+        val hitTargets: Set<Pair<Boolean, Int>>,
+        val logs: List<BattleActionLog>
+    )
+
+    internal fun processTeamDotEffects(cards: List<BattleCard>, currentRound: Int, isPlayerTeam: Boolean): DotTickResult {
+        val texts = mutableListOf<FloatingCombatText>()
+        val hitTargets = mutableSetOf<Pair<Boolean, Int>>()
+        val logs = mutableListOf<BattleActionLog>()
+
+        for (card in cards) {
+            if (!card.isAlive) continue
+            var tookDot = false
+
+            // Poison deals damage only starting from the next round after application
+            if (card.poisonRounds > 0 && currentRound > card.poisonAppliedRound) {
+                val poisonDmg = (card.maxHp * 0.10).toInt().coerceAtLeast(1)
+                card.currentHp = (card.currentHp - poisonDmg).coerceAtLeast(0)
+                card.poisonRounds = (card.poisonRounds - 1).coerceAtLeast(0)
+                tookDot = true
+                texts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 40 + card.slotIndex,
+                        slotIndex = card.slotIndex,
+                        isPlayer = card.isPlayer,
+                        text = "-$poisonDmg💜",
+                        type = CombatTextType.POISON
+                    )
+                )
+                logs.add(
+                    BattleActionLog(
+                        id = System.nanoTime() + 100 + card.slotIndex,
+                        text = tr(
+                            "${card.name} получает $poisonDmg ур. от яда 💜",
+                            "${card.localizedName()} takes $poisonDmg poison dmg 💜"
+                        ),
+                        isPlayerAction = isPlayerTeam
+                    )
+                )
+            }
+
+            // Burn deals damage only starting from the next round after application
+            if (card.burnRounds > 0 && currentRound > card.burnAppliedRound) {
+                val pct = if (card.burnPercent > 0) card.burnPercent else 10
+                val burnDmg = (card.maxHp * (pct / 100.0)).toInt().coerceAtLeast(1)
+                card.currentHp = (card.currentHp - burnDmg).coerceAtLeast(0)
+                card.burnRounds = (card.burnRounds - 1).coerceAtLeast(0)
+                tookDot = true
+                texts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 60 + card.slotIndex,
+                        slotIndex = card.slotIndex,
+                        isPlayer = card.isPlayer,
+                        text = "-$burnDmg🧡",
+                        type = CombatTextType.BURN
+                    )
+                )
+                logs.add(
+                    BattleActionLog(
+                        id = System.nanoTime() + 200 + card.slotIndex,
+                        text = tr(
+                            "${card.name} получает $burnDmg ур. от ожога 🧡",
+                            "${card.localizedName()} takes $burnDmg burn dmg 🧡"
+                        ),
+                        isPlayerAction = isPlayerTeam
+                    )
+                )
+            }
+
+            if (tookDot) {
+                hitTargets.add(card.isPlayer to card.slotIndex)
+            }
+
+            if (card.currentHp <= 0) {
+                card.isAlive = false
+                logs.add(
+                    BattleActionLog(
+                        id = System.nanoTime() + 300 + card.slotIndex,
+                        text = tr(
+                            "💀 ${card.name} погибает от яда/огня!",
+                            "💀 ${card.localizedName()} falls to poison/burn!"
+                        ),
+                        isPlayerAction = isPlayerTeam
+                    )
+                )
+            }
+        }
+
+        return DotTickResult(texts, hitTargets, logs)
+    }
+
+    internal fun decrementSkipTurnStatuses(card: BattleCard) {
+        if (card.isFrozen) {
+            card.freezeRounds--
+            if (card.freezeRounds <= 0) {
+                card.freezeRounds = 0
+                card.isFrozen = false
+            }
+        }
+        if (card.isBlinded) {
+            card.blindRounds--
+            if (card.blindRounds <= 0) {
+                card.blindRounds = 0
+                card.isBlinded = false
+            }
+        }
+        if (card.isCharmed) {
+            card.charmRounds--
+            if (card.charmRounds <= 0) {
+                card.charmRounds = 0
+                card.isCharmed = false
+            }
+        }
+        if (card.isStunned) {
+            card.stunRounds--
+            if (card.stunRounds <= 0) {
+                card.stunRounds = 0
+                card.isStunned = false
+            }
+        }
+    }
+
+    private fun skipTurnMessage(card: BattleCard): String {
+        val cName = card.localizedName()
+        return when {
+            card.isFrozen -> tr("$cName заморожен(а) и пропускает ход! 🥶", "$cName is frozen and skips turn! 🥶")
+            card.isBlinded -> tr("$cName ослеплен(а) и пропускает ход! 😵💫", "$cName is blinded and skips turn! 😵💫")
+            card.isCharmed -> tr("$cName под действием приворота и пропускает ход! 💋", "$cName is charmed and skips turn! 💋")
+            else -> tr("$cName оглушен(а) и пропускает ход! 💫", "$cName is stunned and skips turn! 💫")
+        }
+    }
+
+    /**
+     * Selects an active player hero slot for acting this turn.
+     */
+    fun selectPlayerSlot(slotIndex: Int) {
+        val current = _battleState.value ?: return
+        if (current.isProcessingRoundEffects || current.phase != BattlePhase.PLAYER_TURN) return
+        val card = current.playerCards.firstOrNull { it.slotIndex == slotIndex }
+        if (card != null && card.isAlive && !card.hasActedThisRound && !card.hasSkipTurnEffect) {
+            _battleState.update { it?.copy(selectedPlayerSlot = slotIndex) }
+            hapticTrigger?.invoke(false)
+        }
+    }
+
+    /**
+     * Validates if the selected attacker can target a specific enemy slot on the 2x2 grid.
+     * In 2x2 board:
+     * - Slots 0 & 1: Front Row
+     * - Slots 2 & 3: Back Row
+     * Melee must target Front Row if any Front Row heroes are alive.
+     * Ranged and Hybrid can target any slot.
+     */
+    fun canCardTargetSlot(attacker: BattleCard, targetSlot: Int, enemyCards: List<BattleCard>): Boolean {
+        val target = enemyCards.firstOrNull { it.slotIndex == targetSlot } ?: return false
+        if (!target.isAlive) return false
+
+        val frontRowHasAlive = enemyCards.any { it.isFrontRow && it.isAlive }
+        val backRowHasAlive = enemyCards.any { it.isBackRow && it.isAlive }
+
+        return when (attacker.heroType) {
+            HeroType.MELEE -> {
+                if (frontRowHasAlive) target.isFrontRow else true
+            }
+            HeroType.RANGED -> {
+                // Ranged cards hit ONLY enemies in the second row. If second row is empty/dead, can hit front row.
+                if (backRowHasAlive) target.isBackRow else true
+            }
+            HeroType.HYBRID -> true
+        }
+    }
+
+    /**
+     * Executes player card attack towards the chosen target slot with health & armor resolution.
+     */
+    fun executePlayerAttack(targetSlotIndex: Int) {
+        val state = _battleState.value ?: return
+        if (state.phase != BattlePhase.PLAYER_TURN || state.isProcessingRoundEffects) return
+        val selectedSlot = state.selectedPlayerSlot ?: return
+        val attacker = state.playerCards.firstOrNull {
+            it.slotIndex == selectedSlot && it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect
+        } ?: return
+
+        if (!canCardTargetSlot(attacker, targetSlotIndex, state.enemyCards)) return
+
+        performAttackWithPattern(attacker, targetSlotIndex, isPlayerAttacker = true)
+    }
+
+    /**
+     * Executes player special skill when magic is unlocked (level >= 3) and team energy is sufficient.
+     */
+    fun executePlayerSkill() {
+        val state = _battleState.value ?: return
+        if (state.phase != BattlePhase.PLAYER_TURN || state.isProcessingRoundEffects) return
+        val selectedSlot = state.selectedPlayerSlot ?: return
+        val attacker = state.playerCards.firstOrNull {
+            it.slotIndex == selectedSlot && it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect
+        } ?: return
+
+        if (!attacker.hasMagicUnlocked || attacker.skill == null) return
+        if (state.playerTeamMana < attacker.skill.energyCost) return
+
+        performSkill(attacker, isPlayerAttacker = true)
+    }
+
+    internal fun performAttackWithPattern(attacker: BattleCard, primaryTargetSlot: Int, isPlayerAttacker: Boolean) {
+        val state = _battleState.value ?: return
+        val targetList = if (isPlayerAttacker) state.enemyCards else state.playerCards
+        val aliveTargetSlotsBefore = targetList.filter { it.isAlive }.map { it.slotIndex }.toSet()
+        val primaryTarget = targetList.firstOrNull { it.slotIndex == primaryTargetSlot && it.isAlive } ?: return
+
+        hapticTrigger?.invoke(true)
+
+        val targetsToHit = mutableListOf<BattleCard>()
+
+        when (attacker.attackPattern) {
+            AttackPattern.SINGLE -> {
+                targetsToHit.add(primaryTarget)
+            }
+            AttackPattern.PIERCE_LINE -> {
+                // Column 0: slots 0 and 2; Column 1: slots 1 and 3
+                val col = if (primaryTargetSlot == 0 || primaryTargetSlot == 2) listOf(0, 2) else listOf(1, 3)
+                col.forEach { slot ->
+                    targetList.firstOrNull { it.slotIndex == slot && it.isAlive }?.let { targetsToHit.add(it) }
+                }
+            }
+            AttackPattern.ALL_ENEMIES -> {
+                targetsToHit.addAll(targetList.filter { it.isAlive })
+            }
+            AttackPattern.DIAGONAL_PAIR -> {
+                // Diagonal pairs: 0 <-> 3, 1 <-> 2
+                val diagonalSlot = when (primaryTargetSlot) {
+                    0 -> 3
+                    1 -> 2
+                    2 -> 1
+                    3 -> 0
+                    else -> primaryTargetSlot
+                }
+                targetsToHit.add(primaryTarget)
+                if (diagonalSlot != primaryTargetSlot) {
+                    targetList.firstOrNull { it.slotIndex == diagonalSlot && it.isAlive }?.let { targetsToHit.add(it) }
+                }
+            }
+            AttackPattern.POISON_MELEE -> {
+                targetsToHit.add(primaryTarget)
+            }
+            AttackPattern.FRONT_50_BACK_25 -> {
+                targetsToHit.addAll(targetList.filter { it.isAlive })
+            }
+        }
+
+        val isSlowMiss = attacker.isSlowed && (Random.nextFloat() < 0.30f)
+        if (attacker.isSlowed) {
+            attacker.slowRounds--
+            if (attacker.slowRounds <= 0) {
+                attacker.isSlowed = false
+            }
+        }
+
+        val newCombatTexts = mutableListOf<FloatingCombatText>()
+        val isCrit = Random.nextInt(100) < 5
+        var totalDamageDealt = 0
+        var totalShieldAbsorbed = 0
+        val killedTargets = mutableListOf<String>()
+
+        if (isSlowMiss) {
+            for (target in targetsToHit) {
+                if (!target.isAlive) continue
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = tr("Промах! 0⚔️", "Miss! 0⚔️"),
+                        type = CombatTextType.SHIELD_BLOCK
+                    )
+                )
+            }
+        } else {
+            // Basic attacks NEVER apply poison (even for Vlasta); poison is strictly in skills.
+            val aliveTargetCount = targetsToHit.count { it.isAlive }
+            val patternMultiplier = when (attacker.attackPattern) {
+                AttackPattern.PIERCE_LINE -> if (aliveTargetCount <= 1) 1.0 else 0.50
+                AttackPattern.DIAGONAL_PAIR -> if (aliveTargetCount <= 1) 1.0 else 0.50
+                AttackPattern.ALL_ENEMIES -> when {
+                    aliveTargetCount <= 1 -> 1.0
+                    aliveTargetCount == 2 -> 0.50
+                    aliveTargetCount == 3 -> 0.33
+                    else -> 0.25
+                }
+                else -> 1.0
+            }
+
+            for (target in targetsToHit) {
+                if (!target.isAlive) continue
+                val atkStat = if (attacker.isWeakened) (attacker.atk * 0.50).toInt().coerceAtLeast(1) else attacker.atk
+                val targetMultiplier = when (attacker.attackPattern) {
+                    AttackPattern.FRONT_50_BACK_25 -> if (target.isFrontRow) 0.50 else 0.25
+                    else -> patternMultiplier
+                }
+                val rawDamage = (atkStat * targetMultiplier * if (isCrit) 1.5 else 1.0).toInt().coerceAtLeast(1)
+                var remainingDmg = rawDamage
+
+                // Health tracking: Armor/Shield absorbs damage first
+                if (target.currentArmor > 0) {
+                    val blocked = target.currentArmor.coerceAtMost(remainingDmg)
+                    target.currentArmor -= blocked
+                    remainingDmg -= blocked
+                    totalShieldAbsorbed += blocked
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + target.slotIndex,
+                            slotIndex = target.slotIndex,
+                            isPlayer = target.isPlayer,
+                            text = "-$blocked🤍",
+                            type = CombatTextType.SHIELD_BLOCK
+                        )
+                    )
+                }
+
+                // Health tracking: If damage exceeds shield, reduce HP and show damage text.
+                if (remainingDmg > 0) {
+                    target.currentHp = (target.currentHp - remainingDmg).coerceAtLeast(0)
+                    totalDamageDealt += remainingDmg
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + 10 + target.slotIndex,
+                            slotIndex = target.slotIndex,
+                            isPlayer = target.isPlayer,
+                            text = if (isCrit) "-$remainingDmg!" else "-$remainingDmg",
+                            type = if (isCrit) CombatTextType.CRIT_DAMAGE else CombatTextType.DAMAGE
+                        )
+                    )
+                }
+
+                // Health tracking: Death status
+                if (target.currentHp <= 0) {
+                    target.isAlive = false
+                    killedTargets.add(target.localizedName())
+                }
+            }
+        }
+
+        attacker.hasActedThisRound = true
+        if (attacker.weakenedRounds > 0) {
+            attacker.weakenedRounds--
+            if (attacker.weakenedRounds <= 0) attacker.isWeakened = false
+        }
+
+        val patternDesc = when (attacker.attackPattern) {
+            AttackPattern.PIERCE_LINE -> tr("пронзанием линии", "line pierce")
+            AttackPattern.ALL_ENEMIES -> tr("залпом по врагам", "multi-target blast")
+            AttackPattern.DIAGONAL_PAIR -> tr("ударом по диагонали", "diagonal strike")
+            AttackPattern.FRONT_50_BACK_25 -> tr("волной льда", "ice wave")
+            else -> tr("атакой", "attack")
+        }
+
+        val attackerName = attacker.localizedName()
+        val targetsSummary = targetsToHit.joinToString(", ") { it.localizedName() }
+        val damageDesc = if (isSlowMiss) {
+            tr("0 ур. (Промах из-за замедления!)", "0 dmg (Missed due to Slow!)")
+        } else {
+            tr("$totalDamageDealt ур.", "$totalDamageDealt dmg") +
+                if (totalShieldAbsorbed > 0) tr(" (щит -$totalShieldAbsorbed)", " (shield -$totalShieldAbsorbed)") else ""
+        }
+        val killDesc = if (killedTargets.isNotEmpty()) {
+            tr(" • 💀 Повержен: ${killedTargets.joinToString(", ")}", " • 💀 Defeated: ${killedTargets.joinToString(", ")}")
+        } else ""
+
+        val logText = if (isSlowMiss) {
+            tr(
+                "$attackerName: Промах по [$targetsSummary] из-за замедления! 💨",
+                "$attackerName: Missed [$targetsSummary] due to Slow! 💨"
+            )
+        } else {
+            tr(
+                "$attackerName: $patternDesc по [$targetsSummary] на $damageDesc$killDesc",
+                "$attackerName: $patternDesc hits [$targetsSummary] for $damageDesc$killDesc"
+            )
+        }
+        val updatedLogs = state.actionLogs + BattleActionLog(System.currentTimeMillis(), logText, isPlayerAttacker)
+
+        val nextPlayerSlot = if (isPlayerAttacker) {
+            state.playerCards.firstOrNull { it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect }?.slotIndex
+        } else state.selectedPlayerSlot
+
+        val hitTargetSlots = targetsToHit.map { it.slotIndex }.filter { it in aliveTargetSlotsBefore }.distinct()
+        val attackAnim = AttackAnimation(
+            attackerSlot = attacker.slotIndex,
+            isPlayerAttacker = isPlayerAttacker,
+            targetSlot = primaryTargetSlot,
+            targetSlots = hitTargetSlots,
+            isSkill = false
+        )
+
+        val newPlayerMana = state.playerTeamMana
+        val newEnemyMana = state.enemyTeamMana
+
+        _battleState.update {
+            it?.copy(
+                activeAttackAnimation = attackAnim,
+                combatTexts = newCombatTexts,
+                actionLogs = updatedLogs,
+                selectedPlayerSlot = nextPlayerSlot,
+                playerTeamMana = newPlayerMana,
+                enemyTeamMana = newEnemyMana
+            )
+        }
+
+        viewModelScope.launch {
+            delay((350 / (state.battleSpeed)).toLong())
+            _battleState.update { it?.copy(activeAttackAnimation = null) }
+        }
+
+        checkBattleEndOrNextTurn()
+    }
+
+    private fun performSkill(attacker: BattleCard, isPlayerAttacker: Boolean) {
+        val state = _battleState.value ?: return
+        val skill = attacker.skill ?: return
+        val currentMana = if (isPlayerAttacker) state.playerTeamMana else state.enemyTeamMana
+        if (currentMana < skill.energyCost) return
+
+        hapticTrigger?.invoke(true)
+        attacker.hasActedThisRound = true
+        if (attacker.weakenedRounds > 0) {
+            attacker.weakenedRounds--
+            if (attacker.weakenedRounds <= 0) attacker.isWeakened = false
+        }
+        val newPlayerMana = if (isPlayerAttacker) (state.playerTeamMana - skill.energyCost).coerceAtLeast(0) else state.playerTeamMana
+        val newEnemyMana = if (!isPlayerAttacker) (state.enemyTeamMana - skill.energyCost).coerceAtLeast(0) else state.enemyTeamMana
+        val dmgMultiplier = if (attacker.isWeakened) 0.5f else 1.0f
+
+        val allies = if (isPlayerAttacker) state.playerCards.filter { it.isAlive } else state.enemyCards.filter { it.isAlive }
+        val enemies = if (isPlayerAttacker) state.enemyCards.filter { it.isAlive } else state.playerCards.filter { it.isAlive }
+        val aliveEnemySlotsBefore = enemies.map { it.slotIndex }.toSet()
+        val newCombatTexts = mutableListOf<FloatingCombatText>()
+
+        fun dealDamageTo(target: BattleCard, damage: Int, isCrit: Boolean = false, poisonDmg: Int = 0, burnDmg: Int = 0): Int {
+            var remaining = damage
+            if (target.currentArmor > 0) {
+                val blocked = target.currentArmor.coerceAtMost(remaining)
+                target.currentArmor -= blocked
+                remaining -= blocked
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = "-$blocked🤍",
+                        type = CombatTextType.SHIELD_BLOCK
+                    )
+                )
+            }
+            if (remaining > 0) {
+                target.currentHp = (target.currentHp - remaining).coerceAtLeast(0)
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 10 + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = if (isCrit) "-$remaining!" else "-$remaining",
+                        type = if (isCrit) CombatTextType.CRIT_DAMAGE else CombatTextType.DAMAGE
+                    )
+                )
+            }
+            if (poisonDmg > 0) {
+                target.currentHp = (target.currentHp - poisonDmg).coerceAtLeast(0)
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 20 + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = "-$poisonDmg💜",
+                        type = CombatTextType.POISON
+                    )
+                )
+            }
+            if (burnDmg > 0) {
+                target.currentHp = (target.currentHp - burnDmg).coerceAtLeast(0)
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 30 + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = "-$burnDmg🧡",
+                        type = CombatTextType.BURN
+                    )
+                )
+            }
+            if (target.currentHp <= 0) target.isAlive = false
+            return damage
+        }
+
+        when (skill.id) {
+            "brun_skill_1" -> {
+                // Наносит 100% урона врагу и 25% соседнему врагу на линии; если соседа нет — 100% + 25% врагу спереди
+                val preferredColSlot = if (attacker.slotIndex % 2 == 0) 0 else 1
+                val primary = enemies.firstOrNull { it.slotIndex == preferredColSlot }
+                    ?: enemies.firstOrNull { it.slotIndex in 0..1 }
+                    ?: enemies.firstOrNull()
+                if (primary != null) {
+                    val siblingSlot = when (primary.slotIndex) {
+                        0 -> 1
+                        1 -> 0
+                        2 -> 3
+                        3 -> 2
+                        else -> -1
+                    }
+                    val sibling = enemies.firstOrNull { it.slotIndex == siblingSlot }
+                    if (sibling != null) {
+                        val fullDmg = (attacker.atk * 1.0 * dmgMultiplier).toInt().coerceAtLeast(1)
+                        val splashDmg = (attacker.atk * 0.25 * dmgMultiplier).toInt().coerceAtLeast(1)
+                        dealDamageTo(primary, fullDmg)
+                        dealDamageTo(sibling, splashDmg)
+                    } else {
+                        val boostedDmg = (attacker.atk * 1.25 * dmgMultiplier).toInt().coerceAtLeast(1)
+                        dealDamageTo(primary, boostedDmg, isCrit = true)
+                    }
+                }
+            }
+            "olga_skill_1" -> {
+                // Плюс 10% от здоровья к броне и замедляет врага перед собой
+                val armorBonus = (attacker.maxHp * 0.10).toInt().coerceAtLeast(1)
+                attacker.currentArmor += armorBonus
+                newCombatTexts.add(FloatingCombatText(System.nanoTime(), attacker.slotIndex, attacker.isPlayer, "+$armorBonus🤍", CombatTextType.SHIELD_BOOST))
+                val frontEnemy = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (frontEnemy != null) {
+                    frontEnemy.isSlowed = true
+                    frontEnemy.slowRounds = 1
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + frontEnemy.slotIndex, frontEnemy.slotIndex, frontEnemy.isPlayer, tr("🐢 Замедление!", "🐢 Slowed!"), CombatTextType.SKILL))
+                }
+            }
+            "alisa_skill_1" -> {
+                // Каждому союзнику, в том числе и себе 5% от их максимального здоровья в щит
+                allies.forEach { ally ->
+                    val shield = (ally.maxHp * 0.05).toInt().coerceAtLeast(1)
+                    ally.currentArmor += shield
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + ally.slotIndex, ally.slotIndex, ally.isPlayer, "+$shield🤍", CombatTextType.SHIELD_BOOST))
+                }
+            }
+            "alisa_skill_2" -> {
+                // 150% урон одному врагу
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    val dmg = (attacker.atk * 1.5).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = true)
+                }
+            }
+            "vlasta_skill_1" -> {
+                // Отравляет цель на 2 раунда, снимая 20% от максимального здоровья каждый ход
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    target.poisonRounds = 2
+                    target.poisonAppliedRound = state.round
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, tr("💜 Отравление 2р", "💜 Poison 2t"), CombatTextType.SKILL))
+                }
+            }
+            "vlasta_skill_2" -> {
+                // Наносит 120% урона цели и отравляет цель на 2 раунда на 10% от максимального здоровья каждый ход
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    val directDmg = (attacker.atk * 1.20).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, directDmg, isCrit = true)
+                    if (target.isAlive) {
+                        target.poisonRounds = 2
+                        target.poisonAppliedRound = state.round
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 20, target.slotIndex, target.isPlayer, tr("💜 Отравление 2р", "💜 Poison 2t"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "vlasta_skill_3" -> {
+                // Наносит 200% атаки цели, а себя лечит на 50% от уровня урона
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    val dmg = (attacker.atk * 2.0).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = true)
+                    val heal = (dmg * 0.50).toInt().coerceAtLeast(1)
+                    val before = attacker.currentHp
+                    attacker.currentHp = (attacker.currentHp + heal).coerceAtMost(attacker.maxHp)
+                    val actual = attacker.currentHp - before
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime(), attacker.slotIndex, attacker.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                }
+            }
+            "evanda_skill_1" -> {
+                // Добавь щит позади стоящему в размере 20% от ее здоровья
+                val backAlly = allies.firstOrNull { it.slotIndex == attacker.slotIndex + 2 }
+                    ?: allies.firstOrNull { it.slotIndex in 2..3 }
+                    ?: allies.firstOrNull()
+                if (backAlly != null) {
+                    val shield = (attacker.maxHp * 0.20).toInt().coerceAtLeast(1)
+                    backAlly.currentArmor += shield
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + backAlly.slotIndex, backAlly.slotIndex, backAlly.isPlayer, "+$shield🤍", CombatTextType.SHIELD_BOOST))
+                }
+            }
+            "evanda_skill_2" -> {
+                // Добавь щит двум любым персонажам в отряде в размере 15% от их максимального здоровья
+                val targets = allies.sortedBy { it.currentArmor }.take(2)
+                targets.forEach { target ->
+                    val shield = (target.maxHp * 0.15).toInt().coerceAtLeast(1)
+                    target.currentArmor += shield
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, "+$shield🤍", CombatTextType.SHIELD_BOOST))
+                }
+            }
+            "evanda_skill_3" -> {
+                // Щит всем в отряде в размере 10% от их максимального здоровья
+                allies.forEach { ally ->
+                    val shield = (ally.maxHp * 0.10).toInt().coerceAtLeast(1)
+                    ally.currentArmor += shield
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + ally.slotIndex, ally.slotIndex, ally.isPlayer, "+$shield🤍", CombatTextType.SHIELD_BOOST))
+                }
+            }
+            "berta_skill_1" -> {
+                // Нанести каждому врагу на второй линии по 50% от своего урона (или 100%, если остался один враг)
+                val backEnemies = enemies.filter { it.slotIndex in 2..3 }
+                val targets = if (backEnemies.isNotEmpty()) backEnemies else enemies
+                val multiplierPct = if (targets.size == 1) 1.0 else 0.50
+                targets.forEach { target ->
+                    val dmg = (attacker.atk * multiplierPct * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                }
+            }
+            "witch_skill_1" -> {
+                // Наносит по 30% урона обоим врагам на второй линии и ослабляет их атаку на 50% на один ход
+                val backEnemies = enemies.filter { it.slotIndex in 2..3 }
+                val targets = if (backEnemies.isNotEmpty()) backEnemies else enemies
+                targets.forEach { target ->
+                    val dmg = (attacker.atk * 0.30 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                    if (target.isAlive) {
+                        target.isWeakened = true
+                        target.weakenedRounds = 1
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 10, target.slotIndex, target.isPlayer, "🤕 -50%⚔️", CombatTextType.SKILL))
+                    }
+                }
+            }
+            "iva_skill_1" -> {
+                // Исцеляет одного наиболее раненого союзника на 25% от его максимального здоровья
+                val target = allies.minByOrNull { it.currentHp.toFloat() / it.maxHp } ?: allies.firstOrNull()
+                if (target != null) {
+                    val healAmount = (target.maxHp * 0.25).toInt().coerceAtLeast(1)
+                    val before = target.currentHp
+                    target.currentHp = (target.currentHp + healAmount).coerceAtMost(target.maxHp)
+                    val actual = target.currentHp - before
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime(), target.slotIndex, target.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                }
+            }
+            "iva_skill_2" -> {
+                // Исцеляет двух любых союзников на 15% от его максимального здоровья
+                val targets = allies.sortedBy { it.currentHp.toFloat() / it.maxHp }.take(2)
+                targets.forEach { target ->
+                    val healAmount = (target.maxHp * 0.15).toInt().coerceAtLeast(1)
+                    val before = target.currentHp
+                    target.currentHp = (target.currentHp + healAmount).coerceAtMost(target.maxHp)
+                    val actual = target.currentHp - before
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                }
+            }
+            "isolda_skill_1" -> {
+                // Замораживает любого персонажа врага на один раунд (враг пропускает ход, 🥶)
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    target.isFrozen = true
+                    target.freezeRounds = 1
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, tr("🥶 Заморозка!", "🥶 Frozen!"), CombatTextType.SKILL))
+                }
+            }
+            "isolda_skill_2" -> {
+                // Наносит по 30% урона всем врагам и замедляет их на один раунд на 25%
+                enemies.forEach { target ->
+                    val dmg = (attacker.atk * 0.30 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                    if (target.isAlive) {
+                        target.isSlowed = true
+                        target.slowRounds = 1
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 5, target.slotIndex, target.isPlayer, "🐢 -25%", CombatTextType.SKILL))
+                    }
+                }
+            }
+            "mina_skill_1" -> {
+                // Ослепляет одного из врагов (враг пропускает следующий ход, 😵💫)
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    target.isBlinded = true
+                    target.blindRounds = 1
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, tr("😵💫 Ослеплен!", "😵💫 Blinded!"), CombatTextType.SKILL))
+                }
+            }
+            "mina_skill_2" -> {
+                // Нанести всем врагам 60% урона и ожог картам второй линии с уроном в 20% на 2 раунда
+                enemies.forEach { target ->
+                    val dmg = (attacker.atk * 0.60 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                    if (target.isAlive && target.slotIndex in 2..3) {
+                        target.burnRounds = 2
+                        target.burnPercent = 20
+                        target.burnAppliedRound = state.round
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 30, target.slotIndex, target.isPlayer, tr("🔥 Ожог 20%", "🔥 Burn 20%"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "dem_skill_1" -> {
+                // 125% урон по обоим врагам на первой линии
+                val frontEnemies = enemies.filter { it.slotIndex in 0..1 }
+                val targets = if (frontEnemies.isNotEmpty()) frontEnemies else enemies.take(2)
+                targets.forEach { target ->
+                    val dmg = (attacker.atk * 1.25 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = true)
+                }
+            }
+            "dem_skill_2" -> {
+                // Приворот: враг пропускает следующий ход (💋) и атакует соседнего союзника на 100% своей атаки
+                val frontEnemies = enemies.filter { it.slotIndex in 0..1 }
+                val targetEnemy = frontEnemies.firstOrNull() ?: enemies.firstOrNull()
+                if (targetEnemy != null) {
+                    targetEnemy.isCharmed = true
+                    targetEnemy.charmRounds = 1
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + targetEnemy.slotIndex, targetEnemy.slotIndex, targetEnemy.isPlayer, tr("💋 Приворот!", "💋 Charmed!"), CombatTextType.SKILL))
+                    val victimEnemy = frontEnemies.firstOrNull { it.slotIndex != targetEnemy.slotIndex }
+                        ?: enemies.firstOrNull { it.slotIndex != targetEnemy.slotIndex }
+                    if (victimEnemy != null) {
+                        val dmg = (targetEnemy.atk * dmgMultiplier).toInt().coerceAtLeast(1)
+                        dealDamageTo(victimEnemy, dmg, isCrit = true)
+                    }
+                }
+            }
+            "dem_skill_3" -> {
+                // 100% урон по двум врагам на первой линии и 50% по двум врагам на второй линии
+                enemies.forEach { target ->
+                    val multiplier = if (target.slotIndex in 0..1) 1.0 else 0.50
+                    val dmg = (attacker.atk * multiplier * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = true)
+                }
+            }
+            "baker_skill_1" -> {
+                // 120% урон любому персонажу на первой линии и поджигает его на 2 раунда на 10% от его максимального здоровья каждый раунд
+                val target = enemies.firstOrNull { it.slotIndex in 0..1 } ?: enemies.firstOrNull()
+                if (target != null) {
+                    val directDmg = (attacker.atk * 1.20 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, directDmg, isCrit = true)
+                    if (target.isAlive) {
+                        target.burnRounds = 2
+                        target.burnPercent = 10
+                        target.burnAppliedRound = state.round
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 30, target.slotIndex, target.isPlayer, tr("🔥 Ожог 10%", "🔥 Burn 10%"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "baker_skill_2" -> {
+                // 50% урон каждому противнику на первой линии и оглушает одного из них на один раунд
+                val frontEnemies = enemies.filter { it.slotIndex in 0..1 }
+                val targets = if (frontEnemies.isNotEmpty()) frontEnemies else enemies.take(2)
+                targets.forEachIndexed { idx, target ->
+                    val dmg = (attacker.atk * 0.50 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                    if (idx == 0 && target.isAlive) {
+                        target.isStunned = true
+                        target.stunRounds = 1
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 3, target.slotIndex, target.isPlayer, tr("💫 Оглушен!", "💫 Stunned!"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "baker_skill_3" -> {
+                // 150% урона по всей первой линии и поджигает ее на 10% от ее максимального здоровья на 2 раунда каждый ход
+                val frontEnemies = enemies.filter { it.slotIndex in 0..1 }
+                val targets = if (frontEnemies.isNotEmpty()) frontEnemies else enemies
+                targets.forEach { target ->
+                    val dmg = (attacker.atk * 1.50 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = true)
+                    if (target.isAlive) {
+                        target.burnRounds = 2
+                        target.burnPercent = 10
+                        target.burnAppliedRound = state.round
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 30, target.slotIndex, target.isPlayer, tr("🔥 Ожог 10%", "🔥 Burn 10%"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "elios_skill_1" -> {
+                // Замораживает двух врагов на 1 ход и наносит им урон в размере 50%
+                val targets = (enemies.filter { !it.isFrozen } + enemies.filter { it.isFrozen }).take(2)
+                targets.forEach { target ->
+                    val dmg = (attacker.atk * 0.50 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg)
+                    if (target.isAlive) {
+                        target.isFrozen = true
+                        target.freezeRounds = 1
+                        newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 5, target.slotIndex, target.isPlayer, tr("🥶 Заморозка!", "🥶 Frozen!"), CombatTextType.SKILL))
+                    }
+                }
+            }
+            "elios_skill_2" -> {
+                // Два любых противника ослаблены на 50%
+                val targets = (enemies.filter { !it.isWeakened }.shuffled() + enemies.filter { it.isWeakened }).take(2)
+                targets.forEach { target ->
+                    target.isWeakened = true
+                    target.weakenedRounds = 1
+                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 10, target.slotIndex, target.isPlayer, "🤕 -50%⚔️", CombatTextType.SKILL))
+                }
+            }
+            "vasilisa_skill_1" -> {
+                // Дополнительно снимает 25% от нанесенного урона с любого врага
+                val primary = enemies.firstOrNull()
+                if (primary != null) {
+                    val primaryDmg = (attacker.atk * 1.0 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(primary, primaryDmg)
+                    val secondary = enemies.filter { it.isAlive && it.slotIndex != primary.slotIndex }.randomOrNull()
+                    if (secondary != null) {
+                        val extraDmg = (primaryDmg * 0.25).toInt().coerceAtLeast(1)
+                        dealDamageTo(secondary, extraDmg)
+                    }
+                }
+            }
+            "vasilisa_skill_2" -> {
+                // С вероятностью 35% наносит критический урон, в ином случае обычный
+                val target = enemies.firstOrNull()
+                if (target != null) {
+                    val critRoll = vasilisaCritRollOverride ?: Random.nextInt(100)
+                    val isSkillCrit = critRoll < 35
+                    val critMult = if (isSkillCrit) 1.5 else 1.0
+                    val dmg = (attacker.atk * critMult * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(target, dmg, isCrit = isSkillCrit)
+                }
+            }
+            "vasilisa_skill_3" -> {
+                // Наносит дополнительно 100% второму врагу по диагонали
+                fun diagonalSlot(slot: Int): Int = when (slot) {
+                    0 -> 3
+                    1 -> 2
+                    2 -> 1
+                    3 -> 0
+                    else -> -1
+                }
+                val primary = enemies.firstOrNull { candidate ->
+                    val diag = diagonalSlot(candidate.slotIndex)
+                    enemies.any { it.slotIndex == diag && it.isAlive }
+                } ?: enemies.firstOrNull()
+                if (primary != null) {
+                    val dmg = (attacker.atk * 1.0 * dmgMultiplier).toInt().coerceAtLeast(1)
+                    dealDamageTo(primary, dmg)
+                    val diagSlot = diagonalSlot(primary.slotIndex)
+                    val diagTarget = enemies.firstOrNull { it.slotIndex == diagSlot && it.isAlive }
+                    if (diagTarget != null) {
+                        dealDamageTo(diagTarget, dmg, isCrit = true)
+                    }
+                }
+            }
+            else -> {
+                when (skill.skillType) {
+                    SkillType.SUPPORT -> {
+                        val healAmount = (attacker.atk * 0.9).toInt().coerceAtLeast(10)
+                        allies.forEach { ally ->
+                            val before = ally.currentHp
+                            ally.currentHp = (ally.currentHp + healAmount).coerceAtMost(ally.maxHp)
+                            val actualHeal = ally.currentHp - before
+                            newCombatTexts.add(
+                                FloatingCombatText(
+                                    id = System.nanoTime() + ally.slotIndex,
+                                    slotIndex = ally.slotIndex,
+                                    isPlayer = ally.isPlayer,
+                                    text = "+$actualHeal❤️",
+                                    type = CombatTextType.HEAL
+                                )
+                            )
+                        }
+                    }
+                    SkillType.DEFENSIVE -> {
+                        val shieldAmount = (attacker.atk * 0.7).toInt().coerceAtLeast(6)
+                        allies.forEach { ally ->
+                            if (ally.heroType == HeroType.MELEE) {
+                                ally.currentArmor = (ally.currentArmor + shieldAmount).coerceAtMost(ally.maxArmor + 10)
+                                newCombatTexts.add(
+                                    FloatingCombatText(
+                                        id = System.nanoTime() + ally.slotIndex,
+                                        slotIndex = ally.slotIndex,
+                                        isPlayer = ally.isPlayer,
+                                        text = "+$shieldAmount🤍",
+                                        type = CombatTextType.SHIELD_BOOST
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    SkillType.OFFENSIVE -> {
+                        val aoeDmg = (attacker.atk * 1.3 * dmgMultiplier).toInt().coerceAtLeast(1)
+                        enemies.take(2).forEach { enemy ->
+                            dealDamageTo(enemy, aoeDmg, isCrit = true)
+                        }
+                    }
+                }
+            }
+        }
+
+        val logText = tr(
+            "${attacker.name} применяет способность [${skill.name}]!",
+            "${attacker.localizedName()} casts [${skill.localizedName()}]!"
+        )
+        val updatedLogs = state.actionLogs + BattleActionLog(System.currentTimeMillis(), logText, isPlayerAttacker)
+
+        val nextPlayerSlot = if (isPlayerAttacker) {
+            state.playerCards.firstOrNull { it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect }?.slotIndex
+        } else state.selectedPlayerSlot
+
+        val hitSlots = newCombatTexts
+            .filter { it.isPlayer != isPlayerAttacker && it.slotIndex in aliveEnemySlotsBefore }
+            .map { it.slotIndex }
+            .distinct()
+        val skillAnim = AttackAnimation(
+            attackerSlot = attacker.slotIndex,
+            isPlayerAttacker = isPlayerAttacker,
+            targetSlot = hitSlots.firstOrNull() ?: -1,
+            targetSlots = hitSlots,
+            isSkill = true
+        )
+
+        val updatedSkillsUsed = if (isPlayerAttacker) {
+            state.playerSkillsUsedCount + 1
+        } else {
+            state.playerSkillsUsedCount
+        }
+
+        _battleState.update {
+            it?.copy(
+                activeAttackAnimation = skillAnim,
+                combatTexts = newCombatTexts,
+                actionLogs = updatedLogs,
+                selectedPlayerSlot = nextPlayerSlot,
+                playerTeamMana = newPlayerMana,
+                enemyTeamMana = newEnemyMana,
+                playerSkillsUsedCount = updatedSkillsUsed
+            )
+        }
+
+        viewModelScope.launch {
+            delay((450 / (state.battleSpeed)).toLong())
+            _battleState.update { it?.copy(activeAttackAnimation = null) }
+        }
+
+        checkBattleEndOrNextTurn()
+    }
+
+    private fun checkBattleEndOrNextTurn() {
+        val state = _battleState.value ?: return
+        if (state.phase == BattlePhase.VICTORY || state.phase == BattlePhase.DEFEAT) return
+
+        val playerDead = state.playerCards.none { it.isAlive }
+        val enemyDead = state.enemyCards.none { it.isAlive }
+
+        if (enemyDead) {
+            enemyTurnJob?.cancel()
+            autoBattleJob?.cancel()
+            val victorySpeaker = state.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" }.randomOrNull()
+                ?: state.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" }
+            val vQuote = victorySpeaker?.let { pickHeroBattleQuote(it, QuoteContext.VICTORY) }
+            _battleState.update { current ->
+                if (current == null) null
+                else current.copy(
+                    phase = BattlePhase.VICTORY,
+                    dotHitTargets = emptySet(),
+                    isProcessingRoundEffects = false,
+                    victoryQuote = vQuote,
+                    actionLogs = if (vQuote != null) {
+                        current.actionLogs + BattleActionLog(
+                            id = System.currentTimeMillis(),
+                            text = "🏆 ${vQuote.heroName}: «${vQuote.text}»",
+                            isPlayerAction = true
+                        )
+                    } else current.actionLogs
+                )
+            }
+            if (!hasReportedBattleEnd) {
+                hasReportedBattleEnd = true
+                val endState = _battleState.value ?: state.copy(phase = BattlePhase.VICTORY, victoryQuote = vQuote)
+                onBattleEndCallback?.invoke(true, endState)
+            }
+            return
+        }
+        if (playerDead) {
+            enemyTurnJob?.cancel()
+            autoBattleJob?.cancel()
+            _battleState.update { it?.copy(phase = BattlePhase.DEFEAT, dotHitTargets = emptySet(), isProcessingRoundEffects = false) }
+            if (!hasReportedBattleEnd) {
+                hasReportedBattleEnd = true
+                val endState = _battleState.value ?: state.copy(phase = BattlePhase.DEFEAT)
+                onBattleEndCallback?.invoke(false, endState)
+            }
+            return
+        }
+
+        val playerCanAct = state.playerCards.any { it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect }
+        if (!playerCanAct && state.phase == BattlePhase.PLAYER_TURN) {
+            // Player's turn ends: decrement skip-turn counters on player cards that skipped this turn
+            state.playerCards.forEach { card ->
+                if (card.isAlive && card.hasSkipTurnEffect) {
+                    decrementSkipTurnStatuses(card)
+                }
+            }
+            _battleState.update { current ->
+                if (current == null) null
+                else if (!current.isPlayerFirstTurn) {
+                    current.playerCards.forEach { it.hasActedThisRound = false }
+                    current.enemyCards.forEach { it.hasActedThisRound = false }
+                    current.copy(
+                        round = current.round + 1,
+                        phase = BattlePhase.ENEMY_TURN,
+                        playerTeamMana = (current.playerTeamMana + 1).coerceAtMost(current.playerMaxMana),
+                        enemyTeamMana = (current.enemyTeamMana + 1).coerceAtMost(current.enemyMaxMana),
+                        selectedPlayerSlot = null
+                    )
+                } else {
+                    current.copy(
+                        phase = BattlePhase.ENEMY_TURN,
+                        selectedPlayerSlot = null
+                    )
+                }
+            }
+            executeEnemyTurn()
+        }
+    }
+
+    private fun executeEnemyTurn() {
+        enemyTurnJob?.cancel()
+        enemyTurnJob = viewModelScope.launch {
+            val speedDelay = (900 / (_battleState.value?.battleSpeed ?: 1f)).toLong()
+            delay(speedDelay)
+
+            val initialState = _battleState.value ?: return@launch
+            if (initialState.isBattleOver() || initialState.phase == BattlePhase.DEFEAT || initialState.phase == BattlePhase.VICTORY) return@launch
+
+            // Pre-turn Poison & Burn damage animations for enemy cards
+            val enemyDotResult = processTeamDotEffects(initialState.enemyCards, initialState.round, isPlayerTeam = false)
+            if (enemyDotResult.texts.isNotEmpty() || enemyDotResult.hitTargets.isNotEmpty()) {
+                _battleState.update {
+                    it?.copy(
+                        combatTexts = enemyDotResult.texts,
+                        dotHitTargets = enemyDotResult.hitTargets,
+                        actionLogs = it.actionLogs + enemyDotResult.logs
+                    )
+                }
+                delay((650 / (_battleState.value?.battleSpeed ?: 1f)).toLong())
+                _battleState.update { it?.copy(dotHitTargets = emptySet()) }
+                if (_battleState.value?.enemyCards?.none { it.isAlive } == true) {
+                    checkBattleEndOrNextTurn()
+                    return@launch
+                }
+            }
+
+            val state = _battleState.value ?: return@launch
+            val aliveEnemies = state.enemyCards.filter { it.isAlive }
+
+            for (enemy in aliveEnemies) {
+                val currentState = _battleState.value ?: break
+                if (currentState.isBattleOver() || currentState.phase == BattlePhase.DEFEAT || currentState.phase == BattlePhase.VICTORY) break
+                if (currentState.playerCards.none { it.isAlive }) break
+                if (!enemy.isAlive || enemy.hasActedThisRound) continue
+
+                // Skip-turn check: Frozen / Blinded / Charmed / Stunned enemy cards skip this turn
+                if (enemy.hasSkipTurnEffect) {
+                    val logText = skipTurnMessage(enemy)
+                    _battleState.update { it?.copy(actionLogs = it.actionLogs + BattleActionLog(System.currentTimeMillis(), logText, false)) }
+                    delay((550 / (_battleState.value?.battleSpeed ?: 1f)).toLong())
+                    enemy.hasActedThisRound = true
+                    decrementSkipTurnStatuses(enemy)
+                    _battleState.update { it?.copy() }
+                    continue
+                }
+
+                val validTargets = currentState.playerCards.filter { playerCard ->
+                    playerCard.isAlive && canCardTargetSlot(enemy, playerCard.slotIndex, currentState.playerCards)
+                }
+
+                if (validTargets.isNotEmpty()) {
+                    val target = if (currentState.campaignChapter >= 3) {
+                        // Начиная с 3 главы бот добивает сначала слабые карты игрока
+                        validTargets.minByOrNull { it.currentHp + it.currentArmor } ?: validTargets.first()
+                    } else {
+                        validTargets.random()
+                    }
+                    val candidateSkills = if (enemy.availableSkills.isNotEmpty()) enemy.availableSkills else listOfNotNull(enemy.skill)
+                    val affordableSkill = candidateSkills.filter { currentState.enemyTeamMana >= it.energyCost }.maxByOrNull { it.energyCost }
+                    if (enemy.hasMagicUnlocked && affordableSkill != null) {
+                        performSkill(enemy.copy(skill = affordableSkill), isPlayerAttacker = false)
+                    } else {
+                        performAttackWithPattern(enemy, target.slotIndex, isPlayerAttacker = false)
+                    }
+                    delay(speedDelay)
+                }
+            }
+
+            _battleState.update { current ->
+                if (current == null) null
+                else if (current.isBattleOver() || current.phase == BattlePhase.DEFEAT || current.phase == BattlePhase.VICTORY) current
+                else if (current.isPlayerFirstTurn) {
+                    current.playerCards.forEach { it.hasActedThisRound = false }
+                    current.enemyCards.forEach { it.hasActedThisRound = false }
+                    current.copy(
+                        round = current.round + 1,
+                        phase = BattlePhase.PLAYER_TURN,
+                        isProcessingRoundEffects = true,
+                        playerTeamMana = (current.playerTeamMana + 1).coerceAtMost(current.playerMaxMana),
+                        enemyTeamMana = (current.enemyTeamMana + 1).coerceAtMost(current.enemyMaxMana),
+                        selectedPlayerSlot = null
+                    )
+                } else {
+                    current.playerCards.forEach { it.hasActedThisRound = false }
+                    current.enemyCards.forEach { it.hasActedThisRound = false }
+                    current.copy(
+                        phase = BattlePhase.PLAYER_TURN,
+                        isProcessingRoundEffects = true,
+                        selectedPlayerSlot = null
+                    )
+                }
+            }
+
+            beginPlayerTurnWithRoundEffects()
+        }
+    }
+
+    private suspend fun beginPlayerTurnWithRoundEffects() {
+        val state = _battleState.value ?: return
+        if (state.isBattleOver() || state.phase != BattlePhase.PLAYER_TURN) return
+
+        // 1. Play DOT damage animation & apply HP reduction BEFORE player can pick cards to move
+        val playerDotResult = processTeamDotEffects(state.playerCards, state.round, isPlayerTeam = true)
+        if (playerDotResult.texts.isNotEmpty() || playerDotResult.hitTargets.isNotEmpty()) {
+            _battleState.update {
+                it?.copy(
+                    combatTexts = playerDotResult.texts,
+                    dotHitTargets = playerDotResult.hitTargets,
+                    actionLogs = it.actionLogs + playerDotResult.logs
+                )
+            }
+            delay((650 / (_battleState.value?.battleSpeed ?: 1f)).toLong())
+            _battleState.update { it?.copy(dotHitTargets = emptySet()) }
+
+            if (_battleState.value?.playerCards?.none { it.isAlive } == true) {
+                checkBattleEndOrNextTurn()
+                return
+            }
+        }
+
+        // 2. Allow player to select active cards (cards with skip-turn effect remain inactive!)
+        val updatedState = _battleState.value ?: return
+        val firstActiveSlot = updatedState.playerCards.firstOrNull {
+            it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect
+        }?.slotIndex
+
+        _battleState.update {
+            it?.copy(
+                isProcessingRoundEffects = false,
+                selectedPlayerSlot = firstActiveSlot
+            )
+        }
+
+        // 3. If ALL alive player cards have skip-turn effects, log and automatically end player's turn after brief pause
+        if (firstActiveSlot == null && updatedState.playerCards.any { it.isAlive }) {
+            val skipLogs = updatedState.playerCards.filter { it.isAlive && it.hasSkipTurnEffect }.map { card ->
+                BattleActionLog(System.nanoTime() + card.slotIndex, skipTurnMessage(card), true)
+            }
+            _battleState.update { it?.copy(actionLogs = it.actionLogs + skipLogs) }
+            delay((750 / (_battleState.value?.battleSpeed ?: 1f)).toLong())
+            checkBattleEndOrNextTurn()
+            return
+        }
+
+        if (_battleState.value?.isAutoBattle == true && _battleState.value?.phase == BattlePhase.PLAYER_TURN) {
+            runAutoBattleStep()
+        }
+    }
+
+    fun toggleAutoBattle() {
+        val isNowAuto = !(_battleState.value?.isAutoBattle ?: false)
+        _battleState.update { it?.copy(isAutoBattle = isNowAuto) }
+        if (isNowAuto && _battleState.value?.phase == BattlePhase.PLAYER_TURN && _battleState.value?.isProcessingRoundEffects == false) {
+            runAutoBattleStep()
+        }
+    }
+
+    fun setBattleSpeed(speed: Float) {
+        _battleState.update { it?.copy(battleSpeed = speed) }
+    }
+
+    private fun runAutoBattleStep() {
+        autoBattleJob?.cancel()
+        autoBattleJob = viewModelScope.launch {
+            while (_battleState.value?.isAutoBattle == true && _battleState.value?.phase == BattlePhase.PLAYER_TURN) {
+                val state = _battleState.value ?: break
+                if (state.isBattleOver() || state.phase == BattlePhase.DEFEAT || state.phase == BattlePhase.VICTORY) break
+                if (state.isProcessingRoundEffects) {
+                    delay(100)
+                    continue
+                }
+
+                val readyCard = state.playerCards.firstOrNull { it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect } ?: break
+                _battleState.update { it?.copy(selectedPlayerSlot = readyCard.slotIndex) }
+
+                val speedDelay = (600 / (state.battleSpeed)).toLong()
+                delay(speedDelay)
+
+                if (readyCard.hasMagicUnlocked && readyCard.skill != null && state.playerTeamMana >= readyCard.skill.energyCost) {
+                    executePlayerSkill()
+                } else {
+                    val validTargets = state.enemyCards.filter { enemy ->
+                        enemy.isAlive && canCardTargetSlot(readyCard, enemy.slotIndex, state.enemyCards)
+                    }
+                    if (validTargets.isNotEmpty()) {
+                        executePlayerAttack(validTargets.random().slotIndex)
+                    }
+                }
+                delay(speedDelay)
+            }
+        }
+    }
+
+    fun surrenderBattle() {
+        enemyTurnJob?.cancel()
+        autoBattleJob?.cancel()
+        val state = _battleState.value ?: return
+        if (!hasReportedBattleEnd) {
+            hasReportedBattleEnd = true
+            onBattleEndCallback?.invoke(false, state)
+        }
+        _battleState.value = null
+    }
+
+    fun exitBattle() {
+        enemyTurnJob?.cancel()
+        autoBattleJob?.cancel()
+        _battleState.value = null
+    }
+}

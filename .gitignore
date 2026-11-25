@@ -1,0 +1,21 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+.build-outputs/
+*.keystore
+*.keystore.base64
+
+# Ensure apk-distribution and debug artifacts are tracked
+!apk-distribution/
+!apk-distribution/**
+!app-debug.apk
+!app-debug.zip
+!*.zip
+!*.apk
