@@ -56,7 +56,7 @@ fun CollectionScreen(
     val fourStarStagesCount = remember(allStages) { allStages.count { it.stars >= 4 } }
     val maxStars = totalStages * 4
     val unlockedHeroesCount = remember(heroes) { heroes.count { it.isUnlocked } }
-    val maxLevelHeroesCount = remember(heroes) { heroes.count { it.isUnlocked && it.level >= MAX_HERO_LEVEL } }
+    val maxLevelHeroesCount = remember(heroes) { heroes.count { it.isUnlocked && it.level >= it.maxUpgradeLevel() } }
     val towerClearedToday = remember(profile) { computeTowerClearedFloorToday(profile) }
     val unlockedHeroGalleryKeys = remember(heroes) {
         heroes.filter { it.isUnlocked }.flatMap { hero ->
@@ -458,7 +458,7 @@ fun CollectionScreen(
                     tr("Карьера", "Career") to "$clearedStagesCount/$totalStages",
                     tr("Звёзды Карьеры", "Career Stars") to "$totalStars/$maxStars",
                     tr("Героини", "Heroines") to "$unlockedHeroesCount/${heroes.size}",
-                    tr("12-й уровень", "Level 12") to "$maxLevelHeroesCount/${heroes.size}",
+                    tr("Макс. уровень", "Max Level") to "$maxLevelHeroesCount/${heroes.size}",
                     tr("Победы / Поражения", "Wins / Losses") to "${profile.battlesWon} / ${profile.battlesLost}",
                     tr("Арена", "Arena") to "🏆 ${profile.trophies}",
                     tr("Колизей (побед)", "Coliseum Wins") to "${profile.coliseumWon}",

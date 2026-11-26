@@ -31,11 +31,10 @@ fun CardRarity.localizedName(): String = if (!GameLocaleState.isEnglish) display
 }
 
 fun Element.localizedName(): String = if (!GameLocaleState.isEnglish) displayName else when (this) {
-    Element.FIRE -> "Fire"
-    Element.WATER -> "Water"
-    Element.NATURE -> "Nature"
+    Element.STEEL -> "Steel"
+    Element.MAGIC -> "Magic"
+    Element.BLIGHT -> "Blight"
     Element.LIGHT -> "Light"
-    Element.DARK -> "Dark"
 }
 
 fun ArtifactSlot.localizedName(): String = if (!GameLocaleState.isEnglish) displayName else when (this) {
@@ -58,7 +57,8 @@ private val HERO_NAMES_EN = mapOf(
     "demoness" to "Lilith",
     "baker" to "Griselda",
     "elios" to "Ellios",
-    "vasilisa" to "Vasilisa"
+    "vasilisa" to "Vasilisa",
+    "kadru" to "Kadru"
 )
 
 private val HERO_NAME_RU_TO_EN = mapOf(
@@ -76,6 +76,7 @@ private val HERO_NAME_RU_TO_EN = mapOf(
     "Гризельда" to "Griselda",
     "Эллиос" to "Ellios",
     "Василиса" to "Vasilisa",
+    "Кадру" to "Kadru",
     "секретный персонаж" to "secret character",
     "Секретный персонаж" to "Secret character",
     "Героиня" to "Heroine",
@@ -96,7 +97,8 @@ private val HERO_TITLES_EN = mapOf(
     "demoness" to "Alluring Demoness",
     "baker" to "Wicked Pastry Chef",
     "elios" to "Albino Mage",
-    "vasilisa" to "Desert Sniper"
+    "vasilisa" to "Desert Sniper",
+    "kadru" to "Tartarus Reptile"
 )
 
 private val HERO_LORE_EN = mapOf(
@@ -113,7 +115,8 @@ private val HERO_LORE_EN = mapOf(
     "demoness" to "A demoness from the netherworld seeking amusement among mortals.",
     "baker" to "A former royal cook banished for her foul temper, now dreaming of sweet revenge.",
     "elios" to "An illegitimate daughter of Isolda who fled from her mother's oppression.",
-    "vasilisa" to "Vasilisa is a mysterious sniper of the Eastern desert who carries out Vlasta's personal contracts."
+    "vasilisa" to "Vasilisa is a mysterious sniper of the Eastern desert who carries out Vlasta's personal contracts.",
+    "kadru" to "One of Lilith's minions. Her attack is venomous, and healing will be of no use."
 )
 
 fun localizeHeroNameByIdOrRu(heroId: String?, ruName: String): String {
@@ -169,7 +172,9 @@ private val SKILL_TEXTS_EN: Map<String, Pair<String, String>> = mapOf(
     "elios_skill_2" to ("Black Ice" to "Weakens any 2 enemies by 50%."),
     "vasilisa_skill_1" to ("Graze Shot" to "Additionally removes 25% of the dealt damage from any enemy."),
     "vasilisa_skill_2" to ("Light Hand" to "Has a 35% chance to deal critical damage, otherwise deals normal damage."),
-    "vasilisa_skill_3" to ("Zigzag" to "Additionally deals 100% damage to a second enemy diagonally.")
+    "vasilisa_skill_3" to ("Zigzag" to "Additionally deals 100% damage to a second enemy diagonally."),
+    "kadru_skill_1" to ("Fury" to "Increases attack power by 30% for the next turn."),
+    "kadru_skill_2" to ("Venomous Pool" to "Strikes all enemies with poison. Poison deals 50% of the card's damage on the next turn.")
 )
 
 fun HeroSkill.localizedName(): String =

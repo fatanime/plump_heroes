@@ -72,7 +72,7 @@ class BattleViewModel : ViewModel() {
 
         val isPlayerFirst = if (isArena && !isColiseum && !isTower) Random.nextBoolean() else true
         val startPhase = if (isPlayerFirst) BattlePhase.PLAYER_TURN else BattlePhase.ENEMY_TURN
-        val startSpeaker = playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" }.randomOrNull()
+        val startSpeaker = playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
         val startQuote = startSpeaker?.let { pickHeroBattleQuote(it, QuoteContext.BATTLE_START) }
         val initialLogs = if (startQuote != null) {
             listOf(
@@ -164,9 +164,12 @@ class BattleViewModel : ViewModel() {
 
             // Poison deals damage only starting from the next round after application
             if (card.poisonRounds > 0 && currentRound > card.poisonAppliedRound) {
-                val poisonDmg = (card.maxHp * 0.10).toInt().coerceAtLeast(1)
+                val poisonDmg = if (card.poisonFixedDamage > 0) card.poisonFixedDamage else (card.maxHp * 0.10).toInt().coerceAtLeast(1)
                 card.currentHp = (card.currentHp - poisonDmg).coerceAtLeast(0)
                 card.poisonRounds = (card.poisonRounds - 1).coerceAtLeast(0)
+                if (card.poisonRounds == 0) {
+                    card.poisonFixedDamage = 0
+                }
                 tookDot = true
                 texts.add(
                     FloatingCombatText(
@@ -443,7 +446,8 @@ class BattleViewModel : ViewModel() {
 
             for (target in targetsToHit) {
                 if (!target.isAlive) continue
-                val atkStat = if (attacker.isWeakened) (attacker.atk * 0.50).toInt().coerceAtLeast(1) else attacker.atk
+                val boostedAtk = (attacker.atk * (1.0 + attacker.atkBoostPercent / 100.0)).toInt().coerceAtLeast(1)
+                val atkStat = if (attacker.isWeakened) (boostedAtk * 0.50).toInt().coerceAtLeast(1) else boostedAtk
                 val targetMultiplier = when (attacker.attackPattern) {
                     AttackPattern.FRONT_50_BACK_25 -> if (target.isFrontRow) 0.50 else 0.25
                     else -> patternMultiplier
@@ -487,6 +491,19 @@ class BattleViewModel : ViewModel() {
                 if (target.currentHp <= 0) {
                     target.isAlive = false
                     killedTargets.add(target.localizedName())
+                } else if (attacker.heroId == "kadru" || attacker.attackPattern == AttackPattern.POISON_MELEE) {
+                    target.poisonRounds = maxOf(target.poisonRounds, 1)
+                    target.poisonAppliedRound = state.round
+                    target.isHealingBlocked = true
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + 45 + target.slotIndex,
+                            slotIndex = target.slotIndex,
+                            isPlayer = target.isPlayer,
+                            text = "💜☠️",
+                            type = CombatTextType.POISON
+                        )
+                    )
                 }
             }
         }
@@ -495,6 +512,13 @@ class BattleViewModel : ViewModel() {
         if (attacker.weakenedRounds > 0) {
             attacker.weakenedRounds--
             if (attacker.weakenedRounds <= 0) attacker.isWeakened = false
+        }
+        if (attacker.atkBoostRounds > 0) {
+            attacker.atkBoostRounds--
+            if (attacker.atkBoostRounds <= 0) {
+                attacker.atkBoostRounds = 0
+                attacker.atkBoostPercent = 0
+            }
         }
 
         val patternDesc = when (attacker.attackPattern) {
@@ -565,9 +589,9 @@ class BattleViewModel : ViewModel() {
         checkBattleEndOrNextTurn()
     }
 
-    private fun performSkill(attacker: BattleCard, isPlayerAttacker: Boolean) {
+    private fun performSkill(attacker: BattleCard, isPlayerAttacker: Boolean, skillOverride: HeroSkill? = null) {
         val state = _battleState.value ?: return
-        val skill = attacker.skill ?: return
+        val skill = skillOverride ?: attacker.skill ?: return
         val currentMana = if (isPlayerAttacker) state.playerTeamMana else state.enemyTeamMana
         if (currentMana < skill.energyCost) return
 
@@ -579,12 +603,39 @@ class BattleViewModel : ViewModel() {
         }
         val newPlayerMana = if (isPlayerAttacker) (state.playerTeamMana - skill.energyCost).coerceAtLeast(0) else state.playerTeamMana
         val newEnemyMana = if (!isPlayerAttacker) (state.enemyTeamMana - skill.energyCost).coerceAtLeast(0) else state.enemyTeamMana
-        val dmgMultiplier = if (attacker.isWeakened) 0.5f else 1.0f
+        val dmgMultiplier = (if (attacker.isWeakened) 0.5f else 1.0f) * (1.0f + attacker.atkBoostPercent / 100f)
 
         val allies = if (isPlayerAttacker) state.playerCards.filter { it.isAlive } else state.enemyCards.filter { it.isAlive }
         val enemies = if (isPlayerAttacker) state.enemyCards.filter { it.isAlive } else state.playerCards.filter { it.isAlive }
         val aliveEnemySlotsBefore = enemies.map { it.slotIndex }.toSet()
         val newCombatTexts = mutableListOf<FloatingCombatText>()
+
+        fun healBattleCard(target: BattleCard, healAmount: Int) {
+            if (target.isHealingBlocked) {
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + 25 + target.slotIndex,
+                        slotIndex = target.slotIndex,
+                        isPlayer = target.isPlayer,
+                        text = "0💛🚫",
+                        type = CombatTextType.SKILL
+                    )
+                )
+                return
+            }
+            val before = target.currentHp
+            target.currentHp = (target.currentHp + healAmount).coerceAtMost(target.maxHp)
+            val actual = target.currentHp - before
+            newCombatTexts.add(
+                FloatingCombatText(
+                    id = System.nanoTime() + target.slotIndex,
+                    slotIndex = target.slotIndex,
+                    isPlayer = target.isPlayer,
+                    text = "+$actual❤️",
+                    type = CombatTextType.HEAL
+                )
+            )
+        }
 
         fun dealDamageTo(target: BattleCard, damage: Int, isCrit: Boolean = false, poisonDmg: Int = 0, burnDmg: Int = 0): Int {
             var remaining = damage
@@ -726,10 +777,7 @@ class BattleViewModel : ViewModel() {
                     val dmg = (attacker.atk * 2.0).toInt().coerceAtLeast(1)
                     dealDamageTo(target, dmg, isCrit = true)
                     val heal = (dmg * 0.50).toInt().coerceAtLeast(1)
-                    val before = attacker.currentHp
-                    attacker.currentHp = (attacker.currentHp + heal).coerceAtMost(attacker.maxHp)
-                    val actual = attacker.currentHp - before
-                    newCombatTexts.add(FloatingCombatText(System.nanoTime(), attacker.slotIndex, attacker.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                    healBattleCard(attacker, heal)
                 }
             }
             "evanda_skill_1" -> {
@@ -789,10 +837,7 @@ class BattleViewModel : ViewModel() {
                 val target = allies.minByOrNull { it.currentHp.toFloat() / it.maxHp } ?: allies.firstOrNull()
                 if (target != null) {
                     val healAmount = (target.maxHp * 0.25).toInt().coerceAtLeast(1)
-                    val before = target.currentHp
-                    target.currentHp = (target.currentHp + healAmount).coerceAtMost(target.maxHp)
-                    val actual = target.currentHp - before
-                    newCombatTexts.add(FloatingCombatText(System.nanoTime(), target.slotIndex, target.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                    healBattleCard(target, healAmount)
                 }
             }
             "iva_skill_2" -> {
@@ -800,10 +845,7 @@ class BattleViewModel : ViewModel() {
                 val targets = allies.sortedBy { it.currentHp.toFloat() / it.maxHp }.take(2)
                 targets.forEach { target ->
                     val healAmount = (target.maxHp * 0.15).toInt().coerceAtLeast(1)
-                    val before = target.currentHp
-                    target.currentHp = (target.currentHp + healAmount).coerceAtMost(target.maxHp)
-                    val actual = target.currentHp - before
-                    newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex, target.slotIndex, target.isPlayer, "+$actual❤️", CombatTextType.HEAL))
+                    healBattleCard(target, healAmount)
                 }
             }
             "isolda_skill_1" -> {
@@ -994,23 +1036,45 @@ class BattleViewModel : ViewModel() {
                     }
                 }
             }
+            "kadru_skill_1" -> {
+                // Ярость: Увеличивает силу атаки на 30% на следующий ход
+                attacker.atkBoostPercent = 30
+                attacker.atkBoostRounds = 1
+                newCombatTexts.add(
+                    FloatingCombatText(
+                        id = System.nanoTime() + attacker.slotIndex,
+                        slotIndex = attacker.slotIndex,
+                        isPlayer = attacker.isPlayer,
+                        text = "+30%⚔️",
+                        type = CombatTextType.SKILL
+                    )
+                )
+            }
+            "kadru_skill_2" -> {
+                // Ядовитая лужа: Поражает всех врагов ядом. Яд снимет 50% от урона карты на 1 сл ход.
+                val poisonDmg = (attacker.atk * 0.50 * dmgMultiplier).toInt().coerceAtLeast(1)
+                enemies.forEach { target ->
+                    target.poisonRounds = 1
+                    target.poisonAppliedRound = state.round
+                    target.poisonFixedDamage = poisonDmg
+                    target.isHealingBlocked = true
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + target.slotIndex + 40,
+                            slotIndex = target.slotIndex,
+                            isPlayer = target.isPlayer,
+                            text = tr("💜 Яд -$poisonDmg", "💜 Poison -$poisonDmg"),
+                            type = CombatTextType.SKILL
+                        )
+                    )
+                }
+            }
             else -> {
                 when (skill.skillType) {
                     SkillType.SUPPORT -> {
                         val healAmount = (attacker.atk * 0.9).toInt().coerceAtLeast(10)
                         allies.forEach { ally ->
-                            val before = ally.currentHp
-                            ally.currentHp = (ally.currentHp + healAmount).coerceAtMost(ally.maxHp)
-                            val actualHeal = ally.currentHp - before
-                            newCombatTexts.add(
-                                FloatingCombatText(
-                                    id = System.nanoTime() + ally.slotIndex,
-                                    slotIndex = ally.slotIndex,
-                                    isPlayer = ally.isPlayer,
-                                    text = "+$actualHeal❤️",
-                                    type = CombatTextType.HEAL
-                                )
-                            )
+                            healBattleCard(ally, healAmount)
                         }
                     }
                     SkillType.DEFENSIVE -> {
@@ -1037,6 +1101,14 @@ class BattleViewModel : ViewModel() {
                         }
                     }
                 }
+            }
+        }
+
+        if (skill.id != "kadru_skill_1" && attacker.atkBoostRounds > 0) {
+            attacker.atkBoostRounds--
+            if (attacker.atkBoostRounds <= 0) {
+                attacker.atkBoostRounds = 0
+                attacker.atkBoostPercent = 0
             }
         }
 
@@ -1098,8 +1170,8 @@ class BattleViewModel : ViewModel() {
         if (enemyDead) {
             enemyTurnJob?.cancel()
             autoBattleJob?.cancel()
-            val victorySpeaker = state.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" }.randomOrNull()
-                ?: state.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" }
+            val victorySpeaker = state.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
+                ?: state.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }
             val vQuote = victorySpeaker?.let { pickHeroBattleQuote(it, QuoteContext.VICTORY) }
             _battleState.update { current ->
                 if (current == null) null
@@ -1228,7 +1300,7 @@ class BattleViewModel : ViewModel() {
                     val candidateSkills = if (enemy.availableSkills.isNotEmpty()) enemy.availableSkills else listOfNotNull(enemy.skill)
                     val affordableSkill = candidateSkills.filter { currentState.enemyTeamMana >= it.energyCost }.maxByOrNull { it.energyCost }
                     if (enemy.hasMagicUnlocked && affordableSkill != null) {
-                        performSkill(enemy.copy(skill = affordableSkill), isPlayerAttacker = false)
+                        performSkill(enemy, isPlayerAttacker = false, skillOverride = affordableSkill)
                     } else {
                         performAttackWithPattern(enemy, target.slotIndex, isPlayerAttacker = false)
                     }

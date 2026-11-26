@@ -94,7 +94,7 @@ class ExampleRobolectricTest {
             title = "Гоблин",
             heroType = HeroType.MELEE,
             rarity = CardRarity.BASIC,
-            element = Element.FIRE,
+            element = Element.MAGIC,
             imageRes = R.drawable.hero_berta,
             slotIndex = 0,
             isPlayer = false,
@@ -286,7 +286,7 @@ class ExampleRobolectricTest {
             title = "Озорная Пиромантка",
             heroType = HeroType.RANGED,
             rarity = CardRarity.BASIC,
-            element = Element.FIRE,
+            element = Element.MAGIC,
             imageRes = R.drawable.hero_berta,
             slotIndex = 2,
             isPlayer = true,
@@ -320,7 +320,7 @@ class ExampleRobolectricTest {
             title = "Маг",
             heroType = HeroType.RANGED,
             rarity = CardRarity.BASIC,
-            element = Element.DARK,
+            element = Element.BLIGHT,
             imageRes = R.drawable.hero_witch,
             slotIndex = 2, // Back row
             isPlayer = false,
@@ -459,7 +459,7 @@ class ExampleRobolectricTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val repo = GameDataRepository(app)
         val maxedHeroes = repo.getInitialHeroCards().map {
-            it.copy(level = 12, shards = 0).withUpdatedImageForLevel()
+            it.copy(level = it.maxUpgradeLevel(), shards = 0).withUpdatedImageForLevel()
         }
         repo.savePlayerProfile(PlayerProfile(name = "Tester", gold = 50000, gems = 5000))
         repo.saveHeroesState(maxedHeroes)
@@ -645,7 +645,7 @@ class ExampleRobolectricTest {
         )
         fun makeEnemy(slot: Int) = BattleCard(
             heroId = "e$slot", name = "Враг$slot", title = "", heroType = HeroType.MELEE,
-            rarity = CardRarity.BASIC, element = Element.DARK, imageRes = R.drawable.hero_olga,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
             slotIndex = slot, isPlayer = false, level = 1, maxHp = 100, currentHp = 100,
             maxArmor = 0, currentArmor = 0, atk = 10
         )
@@ -673,7 +673,7 @@ class ExampleRobolectricTest {
 
         fun makeEnemy(slot: Int) = BattleCard(
             heroId = "e$slot", name = "E$slot", title = "", heroType = HeroType.HYBRID,
-            rarity = CardRarity.BASIC, element = Element.DARK, imageRes = R.drawable.hero_olga,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
             slotIndex = slot, isPlayer = false, level = 1, maxHp = 100, currentHp = 100,
             maxArmor = 0, currentArmor = 0, atk = 5
         )
@@ -681,7 +681,7 @@ class ExampleRobolectricTest {
         // Vlasta basic attack never applies poison
         val vlastaCard = BattleCard(
             heroId = "vlasta", name = "Власта", title = "", heroType = HeroType.MELEE,
-            rarity = CardRarity.RARE, element = Element.FIRE, imageRes = R.drawable.hero_vlasta,
+            rarity = CardRarity.RARE, element = Element.BLIGHT, imageRes = R.drawable.hero_vlasta,
             slotIndex = 0, isPlayer = true, level = 1, maxHp = 50, currentHp = 50,
             maxArmor = 0, currentArmor = 0, atk = 20, attackPattern = vlastaTemplate.attackPattern
         )
@@ -693,7 +693,7 @@ class ExampleRobolectricTest {
         // Griselda DIAGONAL_PAIR: 2 enemies on diagonal (slots 0 & 3) -> 50% each (10, or 15 if 5% crit)
         val griseldaTwo = BattleCard(
             heroId = "baker", name = "Гризельда", title = "", heroType = HeroType.HYBRID,
-            rarity = CardRarity.RARE, element = Element.FIRE, imageRes = R.drawable.hero_baker,
+            rarity = CardRarity.RARE, element = Element.MAGIC, imageRes = R.drawable.hero_baker,
             slotIndex = 0, isPlayer = true, level = 1, maxHp = 50, currentHp = 50,
             maxArmor = 0, currentArmor = 0, atk = 20, attackPattern = AttackPattern.DIAGONAL_PAIR
         )
@@ -717,7 +717,7 @@ class ExampleRobolectricTest {
         fun testMinaWithCount(count: Int, expectedNonCrit: Int, expectedCrit: Int) {
             val mina = BattleCard(
                 heroId = "mi_and_na", name = "Ми и На", title = "", heroType = HeroType.HYBRID,
-                rarity = CardRarity.SPECIAL, element = Element.FIRE, imageRes = R.drawable.hero_mi_and_na,
+                rarity = CardRarity.SPECIAL, element = Element.MAGIC, imageRes = R.drawable.hero_mi_and_na,
                 slotIndex = 0, isPlayer = true, level = 1, maxHp = 50, currentHp = 50,
                 maxArmor = 0, currentArmor = 0, atk = 100, attackPattern = AttackPattern.ALL_ENEMIES
             )
@@ -738,13 +738,13 @@ class ExampleRobolectricTest {
     fun `verify Blind, Freeze, Charm skills, skip-turn inactivity, and DOT processing`() {
         fun makePlayer(slot: Int, id: String, skill: HeroSkill?) = BattleCard(
             heroId = id, name = id, title = "", heroType = HeroType.HYBRID,
-            rarity = CardRarity.RARE, element = Element.WATER, imageRes = R.drawable.hero_isolda,
+            rarity = CardRarity.RARE, element = Element.MAGIC, imageRes = R.drawable.hero_isolda,
             slotIndex = slot, isPlayer = true, level = 5, maxHp = 100, currentHp = 100,
             maxArmor = 0, currentArmor = 0, atk = 20, skill = skill
         )
         fun makeEnemy(slot: Int) = BattleCard(
             heroId = "e$slot", name = "Enemy$slot", title = "", heroType = HeroType.MELEE,
-            rarity = CardRarity.BASIC, element = Element.DARK, imageRes = R.drawable.hero_olga,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
             slotIndex = slot, isPlayer = false, level = 1, maxHp = 100, currentHp = 100,
             maxArmor = 0, currentArmor = 0, atk = 10
         )
@@ -1280,7 +1280,7 @@ class ExampleRobolectricTest {
         // 1) Player Lilith PIERCE_LINE on 2 alive enemies in column 0 (slots 0 & 2) -> 50% (10, or 15 if 5% crit) each
         val playerLilith = BattleCard(
             heroId = "demoness", name = "Лилит", title = "", heroType = HeroType.HYBRID,
-            rarity = CardRarity.RARE, element = Element.DARK, imageRes = R.drawable.hero_demoness,
+            rarity = CardRarity.RARE, element = Element.BLIGHT, imageRes = R.drawable.hero_demoness,
             slotIndex = 0, isPlayer = true, level = 3, maxHp = 100, currentHp = 100,
             maxArmor = 0, currentArmor = 0, atk = 20, attackPattern = AttackPattern.PIERCE_LINE,
             skill = HeroSkill("dem_skill_1", "Двойной кулак", "", energyCost = 1, unlockLevel = 3)
@@ -1442,7 +1442,7 @@ class ExampleRobolectricTest {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val repo = GameDataRepository(app)
         val heroes = repo.getInitialHeroCards()
-        assertEquals(14, heroes.size)
+        assertEquals(15, heroes.size)
 
         val tierSampleLevels = listOf(1, 3, 5, 8, 10, 12)
         val forbiddenLevelPattern = Regex("(уровн|ур\\.|\\blvl\\b)", RegexOption.IGNORE_CASE)
@@ -1465,11 +1465,13 @@ class ExampleRobolectricTest {
             }
             assertTrue("Hero ${hero.id} should have at least 36 expanded phrases, got $totalPhrases", totalPhrases >= 36)
         }
-        val secretElios = heroes.first { it.id == "elios" }
-        assertTrue(secretElios.isSecret)
-        for (lvl in tierSampleLevels) {
-            assertTrue(getHeroPhrasesForLevel("elios", lvl, QuoteContext.BATTLE_START).isEmpty())
-            assertTrue(getHeroPhrasesForLevel("elios", lvl, QuoteContext.VICTORY).isEmpty())
+        val secretHeroes = heroes.filter { it.isSecret }
+        assertEquals(3, secretHeroes.size)
+        for (secretHero in secretHeroes) {
+            for (lvl in tierSampleLevels) {
+                assertTrue(getHeroPhrasesForLevel(secretHero.id, lvl, QuoteContext.BATTLE_START).isEmpty())
+                assertTrue(getHeroPhrasesForLevel(secretHero.id, lvl, QuoteContext.VICTORY).isEmpty())
+            }
         }
     }
 
@@ -1701,7 +1703,7 @@ class ExampleRobolectricTest {
         val playerCards = listOf(
             BattleCard(
                 heroId = "olga", name = "Ольга", title = "", heroType = HeroType.MELEE,
-                rarity = CardRarity.BASIC, element = Element.FIRE, imageRes = R.drawable.hero_olga,
+                rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
                 slotIndex = 0, isPlayer = true, level = 3, maxHp = 60, currentHp = 60,
                 maxArmor = 10, currentArmor = 10, atk = 20, skill = skill
             )
@@ -1709,7 +1711,7 @@ class ExampleRobolectricTest {
         val enemyCards = listOf(
             BattleCard(
                 heroId = "e0", name = "Враг", title = "", heroType = HeroType.MELEE,
-                rarity = CardRarity.BASIC, element = Element.DARK, imageRes = R.drawable.hero_olga,
+                rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
                 slotIndex = 0, isPlayer = false, level = 1, maxHp = 120, currentHp = 120,
                 maxArmor = 0, currentArmor = 0, atk = 5
             )
@@ -1779,9 +1781,9 @@ class ExampleRobolectricTest {
         try {
             GameLocaleState.resetForTest(AppLanguage.EN, chosen = true)
 
-            // 1. All 14 heroes & skills
+            // 1. All 15 heroes & skills
             val heroes = repo.getInitialHeroCards()
-            assertEquals(14, heroes.size)
+            assertEquals(15, heroes.size)
             for (hero in heroes) {
                 val enName = hero.localizedName()
                 val enTitle = hero.localizedTitle()
@@ -1938,7 +1940,7 @@ class ExampleRobolectricTest {
             assertFalse(elios.isUnlocked)
             assertEquals(SECRET_HERO_UNLOCK_SHARDS, elios.shardsNeeded)
             assertEquals(HeroType.HYBRID, elios.heroType)
-            assertEquals(Element.WATER, elios.element)
+            assertEquals(Element.MAGIC, elios.element)
             assertEquals(AttackPattern.FRONT_50_BACK_25, elios.attackPattern)
 
             // RU localization
@@ -2030,13 +2032,13 @@ class ExampleRobolectricTest {
             assertEquals("Basic chests and daily quests must give 0 secret shards while locked", 0, eliosAfterBasics.shards)
             assertFalse(eliosAfterBasics.isUnlocked)
 
-            // 2. Rarity chest at permille >= 150 (85% case when both secrets locked) does NOT drop secret shards
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 150)
+            // 2. Rarity chest at permille >= 240 (76% case when all 3 secrets locked) does NOT drop secret shards
+            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 240)
             assertEquals(0, vm.allHeroes.value.first { it.id == "elios" }.shards)
             assertFalse(vm.chestOpeningResult.value?.isSecretMystery ?: true)
             vm.dismissChestOpening()
 
-            // 3. Rarity chest at permille < 75 (7.5% Elios case) drops 1..6 shards anonymously without naming Эллиос / Ellios
+            // 3. Rarity chest at permille < 80 (8% Elios case) drops 1..6 shards anonymously without naming Эллиос / Ellios
             vm.openRarityChestWithSecretRoll(secretDropRollPermille = 40, fixedSecretShards = 6)
             val result = vm.chestOpeningResult.value!!
             assertTrue(result.isSecretMystery)
@@ -2094,7 +2096,7 @@ class ExampleRobolectricTest {
             title = "Маг-альбинос",
             heroType = HeroType.HYBRID,
             rarity = CardRarity.MYTHIC,
-            element = Element.WATER,
+            element = Element.MAGIC,
             imageRes = R.drawable.hero_elios_1,
             slotIndex = 2,
             isPlayer = true,
@@ -2109,22 +2111,22 @@ class ExampleRobolectricTest {
         )
         val enemyFront0 = BattleCard(
             heroId = "e0", name = "F0", title = "", heroType = HeroType.MELEE, rarity = CardRarity.BASIC,
-            element = Element.FIRE, imageRes = R.drawable.hero_olga, slotIndex = 0, isPlayer = false,
+            element = Element.STEEL, imageRes = R.drawable.hero_olga, slotIndex = 0, isPlayer = false,
             maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = 20
         )
         val enemyFront1 = BattleCard(
             heroId = "e1", name = "F1", title = "", heroType = HeroType.MELEE, rarity = CardRarity.BASIC,
-            element = Element.FIRE, imageRes = R.drawable.hero_brunhilde, slotIndex = 1, isPlayer = false,
+            element = Element.STEEL, imageRes = R.drawable.hero_brunhilde, slotIndex = 1, isPlayer = false,
             maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = 20
         )
         val enemyBack2 = BattleCard(
             heroId = "e2", name = "B2", title = "", heroType = HeroType.RANGED, rarity = CardRarity.BASIC,
-            element = Element.DARK, imageRes = R.drawable.hero_berta, slotIndex = 2, isPlayer = false,
+            element = Element.MAGIC, imageRes = R.drawable.hero_berta, slotIndex = 2, isPlayer = false,
             maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = 20
         )
         val enemyBack3 = BattleCard(
             heroId = "e3", name = "B3", title = "", heroType = HeroType.RANGED, rarity = CardRarity.BASIC,
-            element = Element.DARK, imageRes = R.drawable.hero_witch, slotIndex = 3, isPlayer = false,
+            element = Element.BLIGHT, imageRes = R.drawable.hero_witch, slotIndex = 3, isPlayer = false,
             maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = 20
         )
 
@@ -2378,30 +2380,30 @@ class ExampleRobolectricTest {
 
         val enemyDead0 = BattleCard(
             heroId = "e0", name = "E0", title = "", heroType = HeroType.MELEE, rarity = CardRarity.BASIC,
-            element = Element.FIRE, imageRes = R.drawable.hero_olga, slotIndex = 0, isPlayer = false,
+            element = Element.STEEL, imageRes = R.drawable.hero_olga, slotIndex = 0, isPlayer = false,
             maxHp = 100, currentHp = 0, isAlive = false, maxArmor = 0, currentArmor = 0, atk = 10
         )
         val enemyAlive1 = BattleCard(
             heroId = "e1", name = "E1", title = "", heroType = HeroType.MELEE, rarity = CardRarity.BASIC,
-            element = Element.FIRE, imageRes = R.drawable.hero_brunhilde, slotIndex = 1, isPlayer = false,
+            element = Element.STEEL, imageRes = R.drawable.hero_brunhilde, slotIndex = 1, isPlayer = false,
             maxHp = 100, currentHp = 100, isAlive = true, maxArmor = 0, currentArmor = 0, atk = 10
         )
         val enemyDead2 = BattleCard(
             heroId = "e2", name = "E2", title = "", heroType = HeroType.RANGED, rarity = CardRarity.BASIC,
-            element = Element.DARK, imageRes = R.drawable.hero_berta, slotIndex = 2, isPlayer = false,
+            element = Element.MAGIC, imageRes = R.drawable.hero_berta, slotIndex = 2, isPlayer = false,
             maxHp = 100, currentHp = 0, isAlive = false, maxArmor = 0, currentArmor = 0, atk = 10
         )
 
         // 1. Two-target offensive skill (dem_skill_1 hits front row 0 & 1) with slot 0 dead -> ONLY slot 1 in targetSlots & combatTexts
         val demCard = BattleCard(
             heroId = "demoness", name = "Лиллит", title = "", heroType = HeroType.MELEE, rarity = CardRarity.MYTHIC,
-            element = Element.FIRE, imageRes = R.drawable.hero_demoness, slotIndex = 0, isPlayer = true, level = 3,
+            element = Element.BLIGHT, imageRes = R.drawable.hero_demoness, slotIndex = 0, isPlayer = true, level = 3,
             maxHp = 120, currentHp = 120, maxArmor = 0, currentArmor = 0, atk = 20,
             skill = HeroSkill("dem_skill_1", "Кара", "", energyCost = 1, unlockLevel = 3)
         )
         val player2 = BattleCard(
             heroId = "iva", name = "Ива", title = "", heroType = HeroType.RANGED, rarity = CardRarity.RARE,
-            element = Element.NATURE, imageRes = R.drawable.hero_iva, slotIndex = 2, isPlayer = true, level = 3,
+            element = Element.LIGHT, imageRes = R.drawable.hero_iva, slotIndex = 2, isPlayer = true, level = 3,
             maxHp = 100, currentHp = 80, maxArmor = 0, currentArmor = 0, atk = 15,
             skill = HeroSkill("iva_skill_1", "Исцеление", "", energyCost = 1, unlockLevel = 3)
         )
@@ -2826,9 +2828,9 @@ class ExampleRobolectricTest {
             assertFalse("EN secret message must not mention drop rate: $enRosterMsg", enRosterMsg.contains("drop rate", ignoreCase = true))
             GameLocaleState.resetForTest(AppLanguage.RU, chosen = true)
 
-            // 2. All heroines fully upgraded to Lv 12 -> 0 shards from Basic, Rarity, Wheel, Quests, and NO max-level messages
+            // 2. All heroines fully upgraded to max level (12 or 10 for Kadru) -> 0 shards from Basic, Rarity, Wheel, Quests, and NO max-level messages
             val allMaxed = repo.getInitialHeroCards().map { hero ->
-                hero.copy(level = hero.rarity.levelCap, shards = 0, isUnlocked = true)
+                hero.copy(level = hero.maxUpgradeLevel(), shards = 0, isUnlocked = true)
             }
             val day7Cal = java.util.Calendar.getInstance().apply {
                 set(2030, java.util.Calendar.MARCH, 16, 10, 0, 0)
@@ -3132,7 +3134,7 @@ class ExampleRobolectricTest {
                 if (it.id == "elios") {
                     it.copy(isUnlocked = true, level = 1, shards = 0, shardsNeeded = 10)
                 } else {
-                    it.copy(isUnlocked = true, level = it.rarity.levelCap, shards = 0)
+                    it.copy(isUnlocked = true, level = it.maxUpgradeLevel(), shards = 0)
                 }
             }
             repo.saveHeroesState(heroesSetup)
@@ -3257,7 +3259,7 @@ class ExampleRobolectricTest {
             repo.saveCampaignClearCounts(mapOf(101 to 5))
             val heroes = repo.getInitialHeroCards().map {
                 if (it.rarity == CardRarity.BASIC && it.id != "brunhilde") {
-                    it.copy(isUnlocked = true, level = it.rarity.levelCap, shards = 0)
+                    it.copy(isUnlocked = true, level = it.maxUpgradeLevel(), shards = 0)
                 } else if (it.id == "brunhilde") {
                     it.copy(isUnlocked = true, level = 1, shards = 0)
                 } else it
@@ -3366,7 +3368,7 @@ class ExampleRobolectricTest {
             assertEquals("Снайпер Пустыни", vasilisa.title)
             assertEquals(HeroType.HYBRID, vasilisa.heroType)
             assertEquals(CardRarity.MYTHIC, vasilisa.rarity)
-            assertEquals(Element.FIRE, vasilisa.element)
+            assertEquals(Element.STEEL, vasilisa.element)
             assertEquals(AttackPattern.SINGLE, vasilisa.attackPattern)
             assertEquals(10, vasilisa.baseAtk)
             assertEquals(0, vasilisa.baseArmor)
@@ -3418,7 +3420,7 @@ class ExampleRobolectricTest {
                 assertTrue(getHeroPhrasesForLevel("vasilisa", lvl, QuoteContext.VICTORY).isEmpty())
                 val card = BattleCard(
                     heroId = "vasilisa", name = "Василиса", title = "Снайпер Пустыни",
-                    heroType = HeroType.HYBRID, rarity = CardRarity.MYTHIC, element = Element.FIRE,
+                    heroType = HeroType.HYBRID, rarity = CardRarity.MYTHIC, element = Element.STEEL,
                     imageRes = R.drawable.hero_vasilisa_max, slotIndex = 0, isPlayer = true,
                     atk = 20, maxArmor = 0, currentArmor = 0, maxHp = 50,
                     currentHp = 50, level = lvl
@@ -3455,7 +3457,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `dual secret drop odds split 7_5 percent each and Vasilisa unlocks via Open at 75 shards`() {
+    fun `triple secret drop odds split 8 percent each 24 total and Vasilisa unlocks via Open at 75 shards`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
         try {
@@ -3464,14 +3466,15 @@ class ExampleRobolectricTest {
             repo.savePlayerProfile(PlayerProfile(name = "SecretDuoTester", level = 5, gold = 10000, gems = 5000, isTutorialCompleted = true))
             val vm = GameViewModel(app)
 
-            // Both Elios & Vasilisa locked: 0..74 -> Elios (7.5%), 75..149 -> Vasilisa (7.5%), 150..999 -> normal
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 149, fixedSecretShards = 6)
+            // All 3 secrets locked: 0..79 -> Elios (8%), 80..159 -> Vasilisa (8%), 160..239 -> Kadru (8%), 240..999 -> normal (76%)
+            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 159, fixedSecretShards = 6)
             val res = vm.chestOpeningResult.value!!
             assertTrue(res.isSecretMystery)
             assertNull("Mystery drop must hide heroId", res.heroId)
             assertEquals(6, res.shardAmount)
             assertEquals(6, vm.allHeroes.value.first { it.id == "vasilisa" }.shards)
             assertEquals(0, vm.allHeroes.value.first { it.id == "elios" }.shards)
+            assertEquals(0, vm.allHeroes.value.first { it.id == "kadru" }.shards)
             assertFalse(res.summaryMessage.contains("Василиса"))
             assertFalse(res.summaryMessage.contains("Vasilisa"))
             assertTrue(vm.latestDropMessage.value?.contains("секретный персонаж", ignoreCase = true) == true)
@@ -3503,17 +3506,23 @@ class ExampleRobolectricTest {
             assertEquals("vasilisa", vm.secretHeroUnlockedPopup.value?.id)
             vm.dismissSecretHeroUnlockedPopup()
 
-            // Once Vasilisa is unlocked while Elios stays locked:
-            // 0..74 (7.5%) -> Elios mystery, 75..999 (92.5%) -> normal drop (never triggers mystery)
+            // Once Vasilisa is unlocked while Elios & Kadru stay locked:
+            // 0..79 (8%) -> Elios mystery, 80..159 (8%) -> Kadru mystery, 160..999 (84%) -> normal drop
             val eliosShardsBefore = vm.allHeroes.value.first { it.id == "elios" }.shards
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 74, fixedSecretShards = 5)
+            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 79, fixedSecretShards = 5)
             assertTrue(vm.chestOpeningResult.value?.isSecretMystery == true)
             assertNull(vm.chestOpeningResult.value?.heroId)
             assertEquals(eliosShardsBefore + 5, vm.allHeroes.value.first { it.id == "elios" }.shards)
             vm.dismissChestOpening()
 
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 75, fixedSecretShards = 5)
-            assertFalse("Permille 75 must be normal drop once only 1 secret remains locked", vm.chestOpeningResult.value?.isSecretMystery ?: true)
+            val kadruShardsBefore = vm.allHeroes.value.first { it.id == "kadru" }.shards
+            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 159, fixedSecretShards = 5)
+            assertTrue(vm.chestOpeningResult.value?.isSecretMystery == true)
+            assertEquals(kadruShardsBefore + 5, vm.allHeroes.value.first { it.id == "kadru" }.shards)
+            vm.dismissChestOpening()
+
+            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 160, fixedSecretShards = 5)
+            assertFalse("Permille 160 must be normal drop once only 2 secrets remain locked", vm.chestOpeningResult.value?.isSecretMystery ?: true)
             vm.dismissChestOpening()
         } finally {
             prefs.edit().clear().commit()
@@ -3533,7 +3542,7 @@ class ExampleRobolectricTest {
         fun buildBattleVm(activeSkill: HeroSkill, initialMana: Int = 10): BattleViewModel {
             val vasilisaPlayer = BattleCard(
                 heroId = "vasilisa", name = "Василиса", title = "Снайпер Пустыни",
-                heroType = HeroType.HYBRID, rarity = CardRarity.MYTHIC, element = Element.FIRE,
+                heroType = HeroType.HYBRID, rarity = CardRarity.MYTHIC, element = Element.STEEL,
                 imageRes = R.drawable.hero_vasilisa_max, slotIndex = 2, isPlayer = true,
                 atk = 40, maxArmor = 0, currentArmor = 0, maxHp = 120,
                 currentHp = 120, level = 12,
@@ -3807,7 +3816,7 @@ class ExampleRobolectricTest {
         fun buildBertaBattle(aliveBackCount: Int): BattleViewModel {
             val bertaPlayer = BattleCard(
                 heroId = "berta", name = "Берта", title = "Пиромантка",
-                heroType = HeroType.RANGED, rarity = CardRarity.BASIC, element = Element.FIRE,
+                heroType = HeroType.RANGED, rarity = CardRarity.BASIC, element = Element.MAGIC,
                 imageRes = R.drawable.hero_berta, slotIndex = 2, isPlayer = true,
                 maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = 40, level = 5,
                 skill = bertaSkill
@@ -4102,13 +4111,13 @@ class ExampleRobolectricTest {
                     rule = rule,
                     playerLevel = 10,
                     avgDeckLevel = 8,
-                    wednesdayElement = Element.FIRE
+                    wednesdayElement = Element.MAGIC
                 )
                 val roof = repo.getTowerRoofFloorForDay(
                     rule = rule,
                     playerLevel = 10,
                     avgDeckLevel = 8,
-                    wednesdayElement = Element.FIRE
+                    wednesdayElement = Element.MAGIC
                 )
                 assertEquals(TOWER_ROOF_FLOOR, roof.floor)
                 assertEquals(floors.last().rewardGold * 2, roof.rewardGold)
@@ -4138,8 +4147,8 @@ class ExampleRobolectricTest {
                             slotHeroes.all { it.rarity == CardRarity.BASIC || it.rarity == CardRarity.SPECIAL }
                         )
                         TowerDayRule.WEDNESDAY_ELEMENTAL_STORM -> assertTrue(
-                            "Wednesday enemy squad must prioritize FIRE element",
-                            slotHeroes.count { it.element == Element.FIRE } >= 3
+                            "Wednesday enemy squad must prioritize MAGIC element",
+                            slotHeroes.count { it.element == Element.MAGIC } >= 3
                         )
                         else -> {}
                     }
@@ -4349,60 +4358,68 @@ class ExampleRobolectricTest {
         val repo = GameDataRepository(app)
         val heroes = repo.getInitialHeroCards()
 
-        // 4 elements are represented in roster (NATURE is unused)
+        // 4 faction schools in roster
         assertEquals(
-            listOf(Element.FIRE, Element.WATER, Element.LIGHT, Element.DARK),
+            listOf(Element.STEEL, Element.MAGIC, Element.BLIGHT, Element.LIGHT),
             HERO_FILTER_ELEMENTS
         )
 
-        // With null (All) type filter: all 4 elements are available
+        // With null (All) type filter: all 4 schools are available
         val allAvailable = com.example.ui.screens.availableElementsForHeroType(heroes, null)
-        assertEquals(setOf(Element.FIRE, Element.WATER, Element.LIGHT, Element.DARK), allAvailable)
+        assertEquals(setOf(Element.STEEL, Element.MAGIC, Element.BLIGHT, Element.LIGHT), allAvailable)
 
-        // MELEE has LIGHT, WATER, FIRE — DARK must be unavailable (disabled)
+        // MELEE has STEEL, BLIGHT, LIGHT — MAGIC must be unavailable (disabled)
         val meleeAvailable = com.example.ui.screens.availableElementsForHeroType(heroes, HeroType.MELEE)
-        assertEquals(setOf(Element.FIRE, Element.WATER, Element.LIGHT), meleeAvailable)
-        assertFalse(Element.DARK in meleeAvailable)
+        assertEquals(setOf(Element.STEEL, Element.BLIGHT, Element.LIGHT), meleeAvailable)
+        assertFalse(Element.MAGIC in meleeAvailable)
 
-        // RANGED has all 4 elements
+        // RANGED has MAGIC, BLIGHT, LIGHT — STEEL must be unavailable (disabled)
         val rangedAvailable = com.example.ui.screens.availableElementsForHeroType(heroes, HeroType.RANGED)
-        assertEquals(setOf(Element.FIRE, Element.WATER, Element.LIGHT, Element.DARK), rangedAvailable)
+        assertEquals(setOf(Element.MAGIC, Element.BLIGHT, Element.LIGHT), rangedAvailable)
+        assertFalse(Element.STEEL in rangedAvailable)
 
-        // HYBRID has FIRE, WATER, DARK — LIGHT must be unavailable (disabled)
+        // HYBRID has STEEL, MAGIC, BLIGHT — LIGHT must be unavailable (disabled)
         val hybridAvailable = com.example.ui.screens.availableElementsForHeroType(heroes, HeroType.HYBRID)
-        assertEquals(setOf(Element.FIRE, Element.WATER, Element.DARK), hybridAvailable)
+        assertEquals(setOf(Element.STEEL, Element.MAGIC, Element.BLIGHT), hybridAvailable)
         assertFalse(Element.LIGHT in hybridAvailable)
 
-        // Element-only filter (DARK across all attack types)
-        val darkOnly = com.example.ui.screens.filterRosterHeroes(
+        // Element-only filter (BLIGHT across all attack types)
+        val blightOnly = com.example.ui.screens.filterRosterHeroes(
             heroes = heroes,
             typeFilter = null,
-            elementFilter = Element.DARK
+            elementFilter = Element.BLIGHT
         )
-        assertEquals(setOf("witch", "demoness"), darkOnly.map { it.id }.toSet())
+        assertEquals(setOf("witch", "demoness", "vlasta", "kadru"), blightOnly.map { it.id }.toSet())
 
-        // Dual filter (RANGED + FIRE and HYBRID + FIRE)
-        val rangedFire = com.example.ui.screens.filterRosterHeroes(
+        // Dual filter (RANGED + MAGIC and HYBRID + MAGIC)
+        val rangedMagic = com.example.ui.screens.filterRosterHeroes(
             heroes = heroes,
             typeFilter = HeroType.RANGED,
-            elementFilter = Element.FIRE
+            elementFilter = Element.MAGIC
         )
-        assertEquals(setOf("berta"), rangedFire.map { it.id }.toSet())
+        assertEquals(setOf("berta", "isolda"), rangedMagic.map { it.id }.toSet())
 
-        val hybridFire = com.example.ui.screens.filterRosterHeroes(
+        val hybridMagic = com.example.ui.screens.filterRosterHeroes(
             heroes = heroes,
             typeFilter = HeroType.HYBRID,
-            elementFilter = Element.FIRE
+            elementFilter = Element.MAGIC
         )
-        assertEquals(setOf("mi_and_na", "baker", "vasilisa"), hybridFire.map { it.id }.toSet())
+        assertEquals(setOf("mi_and_na", "baker", "elios"), hybridMagic.map { it.id }.toSet())
 
-        // Incompatible dual filter (MELEE + DARK) returns empty list
-        val meleeDark = com.example.ui.screens.filterRosterHeroes(
+        // Incompatible dual filters return empty list
+        val meleeMagic = com.example.ui.screens.filterRosterHeroes(
             heroes = heroes,
             typeFilter = HeroType.MELEE,
-            elementFilter = Element.DARK
+            elementFilter = Element.MAGIC
         )
-        assertTrue(meleeDark.isEmpty())
+        assertTrue(meleeMagic.isEmpty())
+
+        val rangedSteel = com.example.ui.screens.filterRosterHeroes(
+            heroes = heroes,
+            typeFilter = HeroType.RANGED,
+            elementFilter = Element.STEEL
+        )
+        assertTrue(rangedSteel.isEmpty())
     }
 
     @Test
@@ -4626,5 +4643,341 @@ class ExampleRobolectricTest {
 
         // Verify apk filename for 1.3.0 uses underscores
         assertEquals("plump_heroes_1_3_0.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.3.0"))
+        assertEquals("plump_heroes_1_4.apk", com.example.network.AppUpdateChecker.buildApkFileName("1.4"))
+    }
+
+    @Test
+    fun `v1_4 four elemental schools assign all 15 heroines migrate legacy saves and rotate wednesday tower`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val heroes = repo.getInitialHeroCards()
+
+        assertEquals(15, heroes.size)
+        val byElement = heroes.groupBy { it.element }.mapValues { (_, list) -> list.map { it.id }.toSet() }
+        assertEquals(setOf("brunhilde", "olga", "alisa", "vasilisa"), byElement[Element.STEEL])
+        assertEquals(setOf("berta", "baker", "mi_and_na", "isolda", "elios"), byElement[Element.MAGIC])
+        assertEquals(setOf("witch", "demoness", "vlasta", "kadru"), byElement[Element.BLIGHT])
+        assertEquals(setOf("evanda", "iva"), byElement[Element.LIGHT])
+
+        // Legacy element migration
+        assertEquals(Element.MAGIC, Element.fromString("FIRE"))
+        assertEquals(Element.MAGIC, Element.fromString("WATER"))
+        assertEquals(Element.BLIGHT, Element.fromString("DARK"))
+        assertEquals(Element.BLIGHT, Element.fromString("NATURE"))
+        assertEquals(Element.LIGHT, Element.fromString("LIGHT"))
+        assertEquals(Element.STEEL, Element.fromString("STEEL"))
+
+        // Wednesday element rotation visits all 4 schools across 4 consecutive weeks
+        val rotated = (0..3).map { w -> resolveWednesdayTowerElement(w * 7L * 24L * 3600_000L) }.toSet()
+        assertEquals(setOf(Element.STEEL, Element.MAGIC, Element.BLIGHT, Element.LIGHT), rotated)
+
+        // Daily quests use new STEEL & MAGIC labels
+        val quests = repo.getDailyQuestCatalog()
+        assertTrue(quests.any { it.id == "q_t2_steel_1" && it.requiredElement == Element.STEEL })
+        assertTrue(quests.any { it.id == "q_t2_magic_1" && it.requiredElement == Element.MAGIC })
+    }
+
+    @Test
+    fun `secret hero Kadru profile lv10 cap 5 portraits gallery zero quotes arena exclusion coliseum front row and 8 percent drop`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+
+        try {
+            val heroes = repo.getInitialHeroCards()
+            val kadru = heroes.first { it.id == "kadru" }
+
+            assertTrue(kadru.isSecret)
+            assertFalse(kadru.isUnlocked)
+            assertEquals("Кадру", kadru.name)
+            assertEquals("Ящер Тартара", kadru.title)
+            assertEquals(HeroType.MELEE, kadru.heroType)
+            assertEquals(CardRarity.MYTHIC, kadru.rarity)
+            assertEquals(Element.BLIGHT, kadru.element)
+            assertEquals(AttackPattern.POISON_MELEE, kadru.attackPattern)
+            assertEquals(KADRU_UNLOCK_SHARDS, kadru.shardsNeeded)
+            assertEquals(75, kadru.secretUnlockShardsTarget())
+            assertEquals(10, kadru.maxUpgradeLevel())
+            assertEquals(10, KADRU_MAX_LEVEL)
+
+            assertEquals(2, kadru.availableSkills.size)
+            assertEquals("kadru_skill_1", kadru.availableSkills[0].id)
+            assertEquals("Ярость", kadru.availableSkills[0].name)
+            assertEquals(3, kadru.availableSkills[0].unlockLevel)
+            assertEquals(2, kadru.availableSkills[0].energyCost)
+            assertEquals("kadru_skill_2", kadru.availableSkills[1].id)
+            assertEquals("Ядовитая лужа", kadru.availableSkills[1].name)
+            assertEquals(5, kadru.availableSkills[1].unlockLevel)
+            assertEquals(3, kadru.availableSkills[1].energyCost)
+
+            // EN localization check
+            GameLocaleState.resetForTest(AppLanguage.EN, chosen = true)
+            assertEquals("Kadru", kadru.localizedName())
+            assertEquals("Tartarus Reptile", kadru.localizedTitle())
+            assertEquals("Fury", kadru.availableSkills[0].localizedName())
+            assertEquals("Venomous Pool", kadru.availableSkills[1].localizedName())
+            GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
+
+            // 5 portraits (no _max) and 5 gallery images
+            val portraitNames = listOf(1, 2, 3, 4, 5, 7, 8, 9, 10, 12).map { lvl ->
+                resolveHeroImageNameForLevel("kadru", lvl)
+            }
+            assertEquals(
+                listOf(
+                    "hero_kadru_0", "hero_kadru_0",
+                    "hero_kadru", "hero_kadru",
+                    "hero_kadru_1", "hero_kadru_1",
+                    "hero_kadru_2", "hero_kadru_2",
+                    "hero_kadru_3", "hero_kadru_3"
+                ),
+                portraitNames
+            )
+            assertTrue("Kadru must never map to a _max portrait", portraitNames.none { it.endsWith("_max") })
+            assertEquals(5, getUnlockedHeroGalleryImages("kadru", 10, R.drawable.hero_kadru_3).size)
+
+            val gallerySections = com.example.ui.screens.buildBonusGallerySections(
+                heroes = listOf(kadru.copy(isUnlocked = true, level = 10)),
+                isCampaign100Percent = false,
+                isEnglish = false
+            )
+            assertEquals(1, gallerySections.size)
+            assertEquals(5, gallerySections[0].items.size)
+            assertTrue(gallerySections[0].subtitleRu.contains("5/5"))
+
+            // Zero battle quotes
+            for (lvl in 1..10) {
+                assertTrue(getHeroPhrasesForLevel("kadru", lvl, QuoteContext.BATTLE_START).isEmpty())
+                assertTrue(getHeroPhrasesForLevel("kadru", lvl, QuoteContext.VICTORY).isEmpty())
+            }
+
+            // Cannot upgrade past Level 10 and level-10 Kadru receives 0 shards from chests
+            val kadruLv9 = heroes.map {
+                if (it.id == "kadru") it.copy(isUnlocked = true, level = 9, shards = 100, shardsNeeded = 10)
+                else it.copy(isUnlocked = true, level = it.maxUpgradeLevel(), shards = 0)
+            }
+            repo.saveHeroesState(kadruLv9)
+            repo.savePlayerProfile(PlayerProfile(name = "KadruCap", level = 12, gold = 50000, gems = 5000, isTutorialCompleted = true))
+            val vmCap = GameViewModel(app)
+            vmCap.upgradeHeroLevel("kadru")
+            val kadruAt10 = vmCap.allHeroes.value.first { it.id == "kadru" }
+            assertEquals(10, kadruAt10.level)
+            assertEquals("Reaching Lv 10 on Kadru must zero excess shards", 0, kadruAt10.shards)
+            assertTrue(kadruAt10.level >= kadruAt10.maxUpgradeLevel())
+
+            // Try upgrading past 10 -> stays 10
+            vmCap.upgradeHeroLevel("kadru")
+            assertEquals(10, vmCap.allHeroes.value.first { it.id == "kadru" }.level)
+
+            // Open chest when Kadru is 10 and everyone else maxed -> 0 shards
+            vmCap.openSummonChest(com.example.ui.screens.ChestType.BASIC)
+            assertEquals(0, vmCap.allHeroes.value.first { it.id == "kadru" }.shards)
+            vmCap.dismissChestOpening()
+
+            // Arena never spawns Kadru; Coliseum battle 6+ places Kadru ONLY in front row (0..1)
+            val arenaPool = repo.generateArenaOpponents(playerLevel = 12, playerTrophies = 1500)
+            assertTrue(arenaPool.none { "kadru" in it.heroIds })
+
+            val coliseumKadruOnly = repo.generateColiseumOpponent(
+                battleNumber = 6,
+                playerDeckAtk = 100,
+                playerDeckHp = 300,
+                avgHeroLevel = 8,
+                unlockedSecretHeroIds = setOf("kadru"),
+                secretSpawnRoll = 0
+            )
+            assertTrue("Kadru must spawn in Coliseum 6+ when unlocked and roll < 30", "kadru" in coliseumKadruOnly.heroIds)
+            val kadruSlot = coliseumKadruOnly.heroIds.indexOf("kadru")
+            assertTrue("Kadru (MELEE) must occupy Coliseum front row slot 0..1, got $kadruSlot", kadruSlot in 0..1)
+
+            // 8% drop window (160..239 when all 3 secrets locked) unlocks Kadru at 75 shards
+            prefs.edit().clear().commit()
+            repo.savePlayerProfile(PlayerProfile(name = "KadruChest", level = 10, gold = 50000, gems = 5000, isTutorialCompleted = true))
+            val vmDrop = GameViewModel(app)
+            vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 160, fixedSecretShards = 6)
+            val dropRes = vmDrop.chestOpeningResult.value!!
+            assertTrue(dropRes.isSecretMystery)
+            assertEquals(6, vmDrop.allHeroes.value.first { it.id == "kadru" }.shards)
+            vmDrop.dismissChestOpening()
+
+            repeat(11) {
+                vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 239, fixedSecretShards = 6)
+                vmDrop.dismissChestOpening()
+            }
+            vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 200, fixedSecretShards = 3)
+            vmDrop.dismissChestOpening()
+            assertEquals(75, vmDrop.allHeroes.value.first { it.id == "kadru" }.shards)
+            vmDrop.unlockSecretHero("kadru")
+            val unlockedKadru = vmDrop.allHeroes.value.first { it.id == "kadru" }
+            assertTrue(unlockedKadru.isUnlocked)
+            assertEquals(0, unlockedKadru.shards)
+            assertEquals("kadru", vmDrop.secretHeroUnlockedPopup.value?.id)
+        } finally {
+            prefs.edit().clear().commit()
+            GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
+        }
+    }
+
+    @Test
+    fun `secret hero Kadru combat rage poison puddle fixed poison and permanent antiheal yellow hearts`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val kadruTemplate = repo.getInitialHeroCards().first { it.id == "kadru" }
+        val ivaTemplate = repo.getInitialHeroCards().first { it.id == "iva" }
+        val furySkill = kadruTemplate.availableSkills[0]   // Ярость: +30% ATK next turn (2 mana)
+        val puddleSkill = kadruTemplate.availableSkills[1] // Ядовитая лужа: poison all for 50% ATK, 1 turn (3 mana)
+        val ivaHealAll = ivaTemplate.availableSkills[0]    // Природный щит / Исцеление
+
+        fun makeKadru(skill: HeroSkill, atk: Int = 20) = BattleCard(
+            heroId = "kadru", name = "Кадру", title = "Ящер Тартара",
+            heroType = HeroType.MELEE, rarity = CardRarity.MYTHIC, element = Element.BLIGHT,
+            imageRes = R.drawable.hero_kadru_3, slotIndex = 0, isPlayer = true,
+            maxHp = 100, currentHp = 100, maxArmor = 0, currentArmor = 0, atk = atk, level = 10,
+            attackPattern = AttackPattern.POISON_MELEE, skill = skill
+        )
+
+        fun makeEnemy(slot: Int, hp: Int = 200, skill: HeroSkill? = null) = BattleCard(
+            heroId = if (skill != null) "iva" else "e$slot",
+            name = "E$slot", title = "",
+            heroType = if (slot < 2) HeroType.MELEE else HeroType.RANGED,
+            rarity = CardRarity.BASIC, element = Element.LIGHT,
+            imageRes = R.drawable.hero_iva, slotIndex = slot, isPlayer = false,
+            maxHp = hp, currentHp = hp, maxArmor = 0, currentArmor = 0, atk = 10, level = 5,
+            skill = skill
+        )
+
+        // 1. Kadru basic attack (POISON_MELEE) applies poison AND permanently sets isHealingBlocked = true
+        val bvmBasic = BattleViewModel()
+        val enemy0 = makeEnemy(0, hp = 200)
+        bvmBasic.startBattle(
+            playerCards = listOf(makeKadru(furySkill, atk = 20)),
+            enemyCards = listOf(enemy0),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmBasic.executePlayerAttack(0)
+        val poisonedByBasic = bvmBasic.battleState.value!!.enemyCards.first()
+        assertTrue("Kadru basic attack must apply poison", poisonedByBasic.poisonRounds > 0)
+        assertTrue("Kadru basic attack must permanently block healing", poisonedByBasic.isHealingBlocked)
+
+        // Even after poison wears off manually / via rounds, isHealingBlocked stays true
+        poisonedByBasic.poisonRounds = 0
+        poisonedByBasic.poisonFixedDamage = 0
+        assertTrue("Anti-heal flag remains permanent after poison expires", poisonedByBasic.isHealingBlocked)
+
+        // 2. Skill 1 ("Ярость"): grants +30% atkBoostPercent for 1 turn; next basic attack (ATK 20 -> 26) consumes it
+        val bvmFury = BattleViewModel()
+        val dummyAlly = makeEnemy(1, hp = 200).copy(isPlayer = true, heroId = "ally1")
+        bvmFury.startBattle(
+            playerCards = listOf(makeKadru(furySkill, atk = 20), dummyAlly),
+            enemyCards = listOf(makeEnemy(0, hp = 200)),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmFury.selectPlayerSlot(0)
+        bvmFury.executePlayerSkill()
+        val boostedKadru = bvmFury.battleState.value!!.playerCards.first { it.slotIndex == 0 }
+        assertEquals(30, boostedKadru.atkBoostPercent)
+        assertEquals(1, boostedKadru.atkBoostRounds)
+        assertTrue(boostedKadru.hasActedThisRound)
+
+        // Simulate next turn action on Kadru while still in PLAYER_TURN & attack enemy -> deals 26 dmg (or 39 if crit) and clears boost
+        boostedKadru.hasActedThisRound = false
+        bvmFury.selectPlayerSlot(0)
+        bvmFury.executePlayerAttack(0)
+        val dmgBoosted = 200 - bvmFury.battleState.value!!.enemyCards.first().currentHp
+        assertTrue("Rage +30% on ATK 20 must deal 26 (or crit 39), got $dmgBoosted", dmgBoosted == 26 || dmgBoosted == 39)
+        assertEquals(0, bvmFury.battleState.value!!.playerCards.first { it.slotIndex == 0 }.atkBoostRounds)
+        assertEquals(0, bvmFury.battleState.value!!.playerCards.first { it.slotIndex == 0 }.atkBoostPercent)
+
+        // 3. Skill 2 ("Ядовитая лужа"): poisons ALL alive enemies for 1 turn with 50% ATK fixed damage & permanently blocks healing
+        val bvmPuddle = BattleViewModel()
+        val eFront = makeEnemy(0, hp = 200).apply { currentHp = 120 }
+        val eBack = makeEnemy(2, hp = 200, skill = ivaHealAll).apply { currentHp = 100 }
+        bvmPuddle.startBattle(
+            playerCards = listOf(makeKadru(puddleSkill, atk = 40)),
+            enemyCards = listOf(eFront, eBack),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmPuddle.executePlayerSkill()
+        val afterPuddle = bvmPuddle.battleState.value!!.enemyCards
+        for (e in afterPuddle) {
+            assertEquals("Poison puddle must apply 1-round poison", 1, e.poisonRounds)
+            assertEquals("Poison puddle fixed damage must be 50% of ATK 40 = 20", 20, e.poisonFixedDamage)
+            assertTrue("Poison puddle must permanently set isHealingBlocked", e.isHealingBlocked)
+        }
+
+        // Enemy team DOT tick deals 20 fixed poison dmg each & expires 1-round poison, yet isHealingBlocked stays TRUE!
+        val hpFrontBeforeTick = eFront.currentHp
+        val hpBackBeforeTick = eBack.currentHp
+        val dotRes = bvmPuddle.processTeamDotEffects(afterPuddle, currentRound = 2, isPlayerTeam = false)
+        assertEquals(setOf(false to 0, false to 2), dotRes.hitTargets)
+        val postFront = afterPuddle.first { it.slotIndex == 0 }
+        val postBack = afterPuddle.first { it.slotIndex == 2 }
+        assertEquals("Fixed poison damage (20) must reduce front enemy HP by exact 20", hpFrontBeforeTick - 20, postFront.currentHp)
+        assertEquals("Fixed poison damage (20) must reduce back enemy HP by exact 20", hpBackBeforeTick - 20, postBack.currentHp)
+        assertEquals("1-turn poison must expire after enemy DOT tick", 0, postFront.poisonRounds)
+        assertEquals("poisonFixedDamage resets to 0 after poison expires", 0, postFront.poisonFixedDamage)
+        assertTrue("isHealingBlocked must STAY true after poison expires", postFront.isHealingBlocked)
+        assertTrue("isHealingBlocked must STAY true on healer too", postBack.isHealingBlocked)
+
+        // 4. Explicit direct test that Iva 2-target heal (iva_skill_2) heals clean ally but 0 HP on Kadru-marked ally even after poisonRounds == 0
+        val ivaHealTwo = ivaTemplate.availableSkills[1] // iva_skill_2: heals two most wounded allies
+        val bvmHealCheck = BattleViewModel()
+        val markedAlly = BattleCard(
+            heroId = "olga", name = "Ольга", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
+            slotIndex = 0, isPlayer = true, maxHp = 200, currentHp = 80,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 5,
+            poisonRounds = 0, poisonFixedDamage = 0, isHealingBlocked = true
+        )
+        val cleanAlly = BattleCard(
+            heroId = "brunhilde", name = "Брунгильда", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_brunhilde,
+            slotIndex = 1, isPlayer = true, maxHp = 200, currentHp = 80,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 5
+        )
+        val healerIva = BattleCard(
+            heroId = "iva", name = "Ива", title = "", heroType = HeroType.RANGED,
+            rarity = CardRarity.RARE, element = Element.LIGHT, imageRes = R.drawable.hero_iva,
+            slotIndex = 2, isPlayer = true, maxHp = 120, currentHp = 120,
+            maxArmor = 0, currentArmor = 0, atk = 30, level = 5, skill = ivaHealTwo
+        )
+        bvmHealCheck.startBattle(
+            playerCards = listOf(markedAlly, cleanAlly, healerIva),
+            enemyCards = listOf(makeEnemy(0, hp = 200)),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmHealCheck.selectPlayerSlot(2)
+        bvmHealCheck.executePlayerSkill()
+        val alliesAfterHeal = bvmHealCheck.battleState.value!!.playerCards
+        assertEquals("Kadru-marked ally must recover 0 HP from Iva heal", 80, alliesAfterHeal.first { it.slotIndex == 0 }.currentHp)
+        assertEquals("Clean ally must heal +15% maxHp (80 -> 110)", 110, alliesAfterHeal.first { it.slotIndex == 1 }.currentHp)
+
+        // Also check Vlasta skill 3 self-heal is blocked when marked by Kadru
+        val vlastaSkill3 = repo.getInitialHeroCards().first { it.id == "vlasta" }.availableSkills[2]
+        val markedVlasta = BattleCard(
+            heroId = "vlasta", name = "Власта", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.RARE, element = Element.BLIGHT, imageRes = R.drawable.hero_vlasta,
+            slotIndex = 0, isPlayer = true, maxHp = 200, currentHp = 90,
+            maxArmor = 0, currentArmor = 0, atk = 30, level = 8,
+            skill = vlastaSkill3, isHealingBlocked = true
+        )
+        val bvmVlastaSelfHeal = BattleViewModel()
+        bvmVlastaSelfHeal.startBattle(
+            playerCards = listOf(markedVlasta),
+            enemyCards = listOf(makeEnemy(0, hp = 200)),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmVlastaSelfHeal.executePlayerSkill()
+        assertEquals("Kadru-marked Vlasta must recover 0 HP from Royal Wrath self-heal", 90, bvmVlastaSelfHeal.battleState.value!!.playerCards.first().currentHp)
     }
 }

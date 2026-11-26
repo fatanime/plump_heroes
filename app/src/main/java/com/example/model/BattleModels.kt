@@ -39,6 +39,10 @@ data class BattleCard(
     var slowRounds: Int = 0,
     var poisonAppliedRound: Int = 0,
     var burnAppliedRound: Int = 0,
+    var atkBoostPercent: Int = 0,
+    var atkBoostRounds: Int = 0,
+    var poisonFixedDamage: Int = 0,
+    var isHealingBlocked: Boolean = false,
     val availableSkills: List<HeroSkill> = emptyList()
 ) {
     val isFrontRow: Boolean get() = slotIndex == 0 || slotIndex == 1

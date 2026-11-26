@@ -26,7 +26,7 @@ class GameDataRepository(context: Context) {
                 title = "Охотница Запада",
                 heroType = HeroType.MELEE,
                 rarity = CardRarity.BASIC,
-                element = Element.LIGHT,
+                element = Element.STEEL,
                 baseAtk = 8,
                 baseArmor = 3,
                 baseHp = 42,
@@ -48,7 +48,7 @@ class GameDataRepository(context: Context) {
                 title = "Рыцарь Севера",
                 heroType = HeroType.MELEE,
                 rarity = CardRarity.BASIC,
-                element = Element.WATER,
+                element = Element.STEEL,
                 baseAtk = 7,
                 baseArmor = 3,
                 baseHp = 38,
@@ -70,7 +70,7 @@ class GameDataRepository(context: Context) {
                 title = "Озорная Пиромантка",
                 heroType = HeroType.RANGED,
                 rarity = CardRarity.BASIC,
-                element = Element.FIRE,
+                element = Element.MAGIC,
                 baseAtk = 12,
                 baseArmor = 0,
                 baseHp = 17,
@@ -92,7 +92,7 @@ class GameDataRepository(context: Context) {
                 title = "Болотная Ведьма",
                 heroType = HeroType.RANGED,
                 rarity = CardRarity.BASIC,
-                element = Element.DARK,
+                element = Element.BLIGHT,
                 baseAtk = 11,
                 baseArmor = 0,
                 baseHp = 17,
@@ -116,7 +116,7 @@ class GameDataRepository(context: Context) {
                 title = "Воительница Юга",
                 heroType = HeroType.MELEE,
                 rarity = CardRarity.SPECIAL,
-                element = Element.FIRE,
+                element = Element.STEEL,
                 baseAtk = 8,
                 baseArmor = 4,
                 baseHp = 46,
@@ -164,7 +164,7 @@ class GameDataRepository(context: Context) {
                 title = "Смертоносные Шутихи",
                 heroType = HeroType.HYBRID,
                 rarity = CardRarity.SPECIAL,
-                element = Element.FIRE,
+                element = Element.MAGIC,
                 baseAtk = 5,
                 baseArmor = 0,
                 baseHp = 19,
@@ -191,7 +191,7 @@ class GameDataRepository(context: Context) {
                 title = "Королева Востока",
                 heroType = HeroType.MELEE,
                 rarity = CardRarity.RARE,
-                element = Element.FIRE,
+                element = Element.BLIGHT,
                 baseAtk = 9,
                 baseArmor = 3,
                 baseHp = 45,
@@ -242,7 +242,7 @@ class GameDataRepository(context: Context) {
                 title = "Королева холода",
                 heroType = HeroType.RANGED,
                 rarity = CardRarity.RARE,
-                element = Element.WATER,
+                element = Element.MAGIC,
                 baseAtk = 11,
                 baseArmor = 0,
                 baseHp = 20,
@@ -266,7 +266,7 @@ class GameDataRepository(context: Context) {
                 title = "Манящая Дьяволица",
                 heroType = HeroType.HYBRID,
                 rarity = CardRarity.RARE,
-                element = Element.DARK,
+                element = Element.BLIGHT,
                 baseAtk = 8,
                 baseArmor = 0,
                 baseHp = 29,
@@ -292,7 +292,7 @@ class GameDataRepository(context: Context) {
                 title = "Злая Пироженщица",
                 heroType = HeroType.HYBRID,
                 rarity = CardRarity.RARE,
-                element = Element.FIRE,
+                element = Element.MAGIC,
                 baseAtk = 8,
                 baseArmor = 0,
                 baseHp = 28,
@@ -313,14 +313,14 @@ class GameDataRepository(context: Context) {
                 unlockCareerStageId = 206 // Доступна после прохождения босса 2 главы (2-6 Власта)
             ),
 
-            // --- SECRET HERO (СЕКРЕТНАЯ) ---
+            // --- SECRET HEROES (СЕКРЕТНЫЕ) ---
             HeroCard(
                 id = "elios",
                 name = "Эллиос",
                 title = "Маг-альбинос",
                 heroType = HeroType.HYBRID,
                 rarity = CardRarity.MYTHIC,
-                element = Element.WATER,
+                element = Element.MAGIC,
                 baseAtk = 7,
                 baseArmor = 0,
                 baseHp = 24,
@@ -360,7 +360,7 @@ class GameDataRepository(context: Context) {
                 title = "Снайпер Пустыни",
                 heroType = HeroType.HYBRID,
                 rarity = CardRarity.MYTHIC,
-                element = Element.FIRE,
+                element = Element.STEEL,
                 baseAtk = 10,
                 baseArmor = 0,
                 baseHp = 20,
@@ -397,6 +397,46 @@ class GameDataRepository(context: Context) {
                     )
                 ),
                 lore = "Василиса — таинственный снайпер пустыни Востока, выполняющая личные заказы Власты.",
+                isUnlocked = false,
+                unlockPlayerLevel = Int.MAX_VALUE,
+                unlockCareerStageId = null,
+                isSecret = true
+            ),
+            HeroCard(
+                id = "kadru",
+                name = "Кадру",
+                title = "Ящер Тартара",
+                heroType = HeroType.MELEE,
+                rarity = CardRarity.MYTHIC,
+                element = Element.BLIGHT,
+                baseAtk = 8,
+                baseArmor = 3,
+                baseHp = 40,
+                level = 1,
+                shards = 0,
+                shardsNeeded = KADRU_UNLOCK_SHARDS,
+                imageRes = R.drawable.hero_kadru_0,
+                attackPattern = AttackPattern.POISON_MELEE,
+                activeSkillId = "kadru_skill_1",
+                availableSkills = listOf(
+                    HeroSkill(
+                        "kadru_skill_1",
+                        "Ярость",
+                        "Увеличивает силу атаки на 30% на следующий ход",
+                        energyCost = 2,
+                        skillType = SkillType.DEFENSIVE,
+                        unlockLevel = 3
+                    ),
+                    HeroSkill(
+                        "kadru_skill_2",
+                        "Ядовитая лужа",
+                        "Поражает всех врагов ядом. Яд снимет 50% от урона карты на 1 сл ход.",
+                        energyCost = 3,
+                        skillType = SkillType.OFFENSIVE,
+                        unlockLevel = 5
+                    )
+                ),
+                lore = "Одна из преспешниц Лилит. Её атака ядовита, а лечение не поможет.",
                 isUnlocked = false,
                 unlockPlayerLevel = Int.MAX_VALUE,
                 unlockCareerStageId = null,
@@ -1020,7 +1060,8 @@ class GameDataRepository(context: Context) {
             "demoness" to "Лилит",
             "baker" to "Гризельда",
             "elios" to "Эллиос",
-            "vasilisa" to "Василиса"
+            "vasilisa" to "Василиса",
+            "kadru" to "Кадру"
         )
         val frontTeam = frontRowCandidates.shuffled().take(2).toMutableList()
         val backTeam = backRowCandidates.filter { it !in frontTeam }.shuffled().take(2).toMutableList()
@@ -1028,10 +1069,10 @@ class GameDataRepository(context: Context) {
             backTeam.add(backRowCandidates.first { it !in backTeam })
         }
 
-        val eligibleSecrets = unlockedSecretHeroIds.filter { it == "elios" || it == "vasilisa" }
+        val eligibleSecrets = unlockedSecretHeroIds.filter { it == "elios" || it == "vasilisa" || it == "kadru" }
         if (battleNumber >= 6 && eligibleSecrets.isNotEmpty() && secretSpawnRoll < 30) {
             val chosenSecret = eligibleSecrets.random()
-            val slotChoice = Random.nextInt(4)
+            val slotChoice = if (chosenSecret == "kadru") Random.nextInt(2) else Random.nextInt(4)
             if (slotChoice < 2) {
                 frontTeam[slotChoice] = chosenSecret
             } else {
@@ -1546,7 +1587,7 @@ class GameDataRepository(context: Context) {
                             eqList.add(eqArray.getString(j))
                         }
                     }
-                    val loadedLevel = saved.optInt("level", hero.level).coerceIn(1, MAX_HERO_LEVEL)
+                    val loadedLevel = saved.optInt("level", hero.level).coerceIn(1, hero.maxUpgradeLevel())
                     val extraLevels = (loadedLevel - hero.level).coerceAtLeast(0)
                     val expectedAtk = hero.baseAtk + extraLevels * hero.atkIncrementPerLevel()
                     val expectedArmor = hero.baseArmor + (if (hero.heroType == HeroType.MELEE) extraLevels else 0)
@@ -1561,7 +1602,7 @@ class GameDataRepository(context: Context) {
                     )
                     hero.copy(
                         level = loadedLevel,
-                        shards = if (loadedLevel >= hero.rarity.levelCap) 0 else saved.optInt("shards", hero.shards),
+                        shards = if (loadedLevel >= hero.maxUpgradeLevel()) 0 else saved.optInt("shards", hero.shards),
                         shardsNeeded = saved.optInt("shardsNeeded", hero.shardsNeeded),
                         isUnlocked = saved.optBoolean("isUnlocked", hero.isUnlocked),
                         activeSkillId = saved.optString("activeSkillId", hero.activeSkillId),
@@ -1821,7 +1862,7 @@ data class SaveImportResult(
                             eqList.add(eqArray.getString(j))
                         }
                     }
-                    val loadedLevel = saved.optInt("level", defaultHero.level).coerceIn(1, MAX_HERO_LEVEL)
+                    val loadedLevel = saved.optInt("level", defaultHero.level).coerceIn(1, defaultHero.maxUpgradeLevel())
                     val extraLevels = (loadedLevel - defaultHero.level).coerceAtLeast(0)
                     val expectedAtk = defaultHero.baseAtk + extraLevels * defaultHero.atkIncrementPerLevel()
                     val expectedArmor = defaultHero.baseArmor + (if (defaultHero.heroType == HeroType.MELEE) extraLevels else 0)
@@ -1836,7 +1877,7 @@ data class SaveImportResult(
                     )
                     defaultHero.copy(
                         level = loadedLevel,
-                        shards = if (loadedLevel >= defaultHero.rarity.levelCap) 0 else saved.optInt("shards", defaultHero.shards),
+                        shards = if (loadedLevel >= defaultHero.maxUpgradeLevel()) 0 else saved.optInt("shards", defaultHero.shards),
                         shardsNeeded = saved.optInt("shardsNeeded", defaultHero.shardsNeeded),
                         isUnlocked = saved.optBoolean("isUnlocked", defaultHero.isUnlocked),
                         activeSkillId = saved.optString("activeSkillId", defaultHero.activeSkillId),
@@ -1927,8 +1968,8 @@ data class SaveImportResult(
         QuestTemplate("q_t2_any_2", "Двойной триумф", "Выиграй 2 любых боя (Карьера или Арена)", QuestType.WIN_ANY_BATTLES, 2, 2, QuestRewardType.GOLD, 230),
         QuestTemplate("q_t2_flawless_1", "Безупречный шаг", "Победи в бою, не потеряв ни одной героини", QuestType.WIN_NO_LOSSES, 2, 1, QuestRewardType.GOLD, 250),
         QuestTemplate("q_t2_upgrade_1", "Тренировка", "Повысь уровень любой героини на +1", QuestType.UPGRADE_HERO, 2, 1, QuestRewardType.SHARDS, 3),
-        QuestTemplate("q_t2_fire_1", "Пламя отряда", "Победи в бою с картой стихии Огня", QuestType.WIN_WITH_ELEMENT, 2, 1, QuestRewardType.GOLD, 220, requiredElement = Element.FIRE),
-        QuestTemplate("q_t2_water_1", "Сила прилива", "Победи в бою с картой стихии Воды", QuestType.WIN_WITH_ELEMENT, 2, 1, QuestRewardType.GOLD, 220, requiredElement = Element.WATER),
+        QuestTemplate("q_t2_steel_1", "Сила стали", "Победи в бою с картой стихии Сталь", QuestType.WIN_WITH_ELEMENT, 2, 1, QuestRewardType.GOLD, 220, requiredElement = Element.STEEL),
+        QuestTemplate("q_t2_magic_1", "Сила магии", "Победи в бою с картой стихии Магия", QuestType.WIN_WITH_ELEMENT, 2, 1, QuestRewardType.GOLD, 220, requiredElement = Element.MAGIC),
         QuestTemplate("q_t2_hybrid_1", "Гибкая тактика", "Победи с картой смешанного боя в отряде", QuestType.WIN_WITH_HYBRID, 2, 1, QuestRewardType.GOLD, 240),
 
         // Tier 3 (Средние: 350-380 золота или 5 частиц)
@@ -1989,9 +2030,7 @@ data class SaveImportResult(
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 val elemStr = obj.optString("requiredElement", "")
-                val reqElem = elemStr.takeIf { it.isNotBlank() }?.let {
-                    try { Element.valueOf(it) } catch (_: Exception) { null }
-                }
+                val reqElem = elemStr.takeIf { it.isNotBlank() }?.let { Element.fromString(it) }
                 result.add(
                     DailyQuestState(
                         id = obj.getString("id"),

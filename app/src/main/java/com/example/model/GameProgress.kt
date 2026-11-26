@@ -364,7 +364,7 @@ fun resolveTowerDayRule(nowMs: Long = System.currentTimeMillis()): TowerDayRule 
 
 fun resolveWednesdayTowerElement(nowMs: Long = System.currentTimeMillis()): Element {
     val weekIndex = (nowMs / (7L * 24L * 3600_000L)).toInt().coerceAtLeast(0)
-    val activeElements = listOf(Element.FIRE, Element.WATER, Element.LIGHT, Element.DARK)
+    val activeElements = listOf(Element.STEEL, Element.MAGIC, Element.BLIGHT, Element.LIGHT)
     return activeElements[weekIndex % activeElements.size]
 }
 

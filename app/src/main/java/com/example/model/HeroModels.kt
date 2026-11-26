@@ -18,9 +18,14 @@ enum class AttackPattern(val title: String) {
 const val MAX_HERO_LEVEL = 12
 const val SECRET_HERO_UNLOCK_SHARDS = 50
 const val VASILISA_UNLOCK_SHARDS = 75
+const val KADRU_UNLOCK_SHARDS = 75
+const val KADRU_MAX_LEVEL = 10
 
 fun HeroCard.secretUnlockShardsTarget(): Int =
-    if (id == "vasilisa") VASILISA_UNLOCK_SHARDS else SECRET_HERO_UNLOCK_SHARDS
+    if (id == "vasilisa" || id == "kadru") VASILISA_UNLOCK_SHARDS else SECRET_HERO_UNLOCK_SHARDS
+
+fun HeroCard.maxUpgradeLevel(): Int =
+    if (id == "kadru") KADRU_MAX_LEVEL else rarity.levelCap
 
 fun HeroCard.atkIncrementPerLevel(): Int =
     if (id == "vasilisa") 1 else 2
@@ -45,14 +50,25 @@ enum class CardRarity(val displayName: String, val levelCap: Int) {
 }
 
 enum class Element(val displayName: String, val symbol: String) {
-    FIRE("Огонь", "🔥"),
-    WATER("Вода", "💧"),
-    NATURE("Природа", "🌿"),
-    LIGHT("Свет", "✨"),
-    DARK("Тьма", "🔮")
+    STEEL("Сталь", "🗡️"),
+    MAGIC("Магия", "🔮"),
+    BLIGHT("Скверна", "☠️"),
+    LIGHT("Свет", "☀️");
+
+    companion object {
+        fun fromString(value: String): Element? {
+            return when (value.trim().uppercase()) {
+                "STEEL" -> STEEL
+                "MAGIC", "FIRE", "WATER" -> MAGIC
+                "BLIGHT", "DARK", "NATURE" -> BLIGHT
+                "LIGHT" -> LIGHT
+                else -> null
+            }
+        }
+    }
 }
 
-val HERO_FILTER_ELEMENTS = listOf(Element.FIRE, Element.WATER, Element.LIGHT, Element.DARK)
+val HERO_FILTER_ELEMENTS = listOf(Element.STEEL, Element.MAGIC, Element.BLIGHT, Element.LIGHT)
 
 enum class ArtifactSlot(val displayName: String) {
     WEAPON("Оружие"),
@@ -290,6 +306,13 @@ fun resolveHeroImageNameForLevel(heroId: String, level: Int, fallbackName: Strin
             in 10..11 -> "hero_vasilisa_3"
             else -> "hero_vasilisa_max"
         }
+        "kadru" -> when (level) {
+            in 1..2 -> "hero_kadru_0"
+            in 3..4 -> "hero_kadru"
+            in 5..7 -> "hero_kadru_1"
+            in 8..9 -> "hero_kadru_2"
+            else -> "hero_kadru_3"
+        }
         else -> fallbackName
     }
 }
@@ -380,6 +403,11 @@ fun resolveHeroDrawableByName(imageName: String, fallbackRes: Int): Int {
         "hero_vasilisa_2" -> com.example.R.drawable.hero_vasilisa_2
         "hero_vasilisa_3" -> com.example.R.drawable.hero_vasilisa_3
         "hero_vasilisa_max" -> com.example.R.drawable.hero_vasilisa_max
+        "hero_kadru_0" -> com.example.R.drawable.hero_kadru_0
+        "hero_kadru" -> com.example.R.drawable.hero_kadru
+        "hero_kadru_1" -> com.example.R.drawable.hero_kadru_1
+        "hero_kadru_2" -> com.example.R.drawable.hero_kadru_2
+        "hero_kadru_3" -> com.example.R.drawable.hero_kadru_3
         else -> fallbackRes
     }
 }
@@ -393,7 +421,7 @@ fun inferHeroIdFromDrawableName(drawableName: String): String {
         .replace(Regex("_(0|1|2|3)$"), "")
     return when {
         clean.startsWith("mi_and_na") -> "mi_and_na"
-        clean in setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa") -> clean
+        clean in setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru") -> clean
         else -> ""
     }
 }
@@ -402,7 +430,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
     val normalizedId = heroId.trim().lowercase()
     val knownIds = setOf(
         "berta", "olga", "brunhilde", "witch", "iva", "alisa",
-        "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa"
+        "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru"
     )
     val effectiveId = if (normalizedId in knownIds) {
         normalizedId
@@ -422,6 +450,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
             "гризельда", "griselda" -> "baker"
             "эллиос", "ellios", "elios" -> "elios"
             "василиса", "vasilisa" -> "vasilisa"
+            "кадру", "kadru" -> "kadru"
             else -> ""
         }
     }
@@ -440,6 +469,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
         "baker" -> com.example.R.drawable.hero_baker
         "elios" -> com.example.R.drawable.hero_elios
         "vasilisa" -> com.example.R.drawable.hero_vasilisa
+        "kadru" -> com.example.R.drawable.hero_kadru
         else -> com.example.R.drawable.app_logo
     }
 }
@@ -543,14 +573,15 @@ fun resolveArenaPortraitTierByChapterHp(
 }
 
 fun getUnlockedHeroGalleryItems(heroId: String, currentLevel: Int, currentImageRes: Int): List<Pair<String, Int>> {
-    val tierMinLevels = listOf(1, 3, 5, 8, 10, 12)
-    val evolvingIds = setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa")
+    val tierMinLevels = if (heroId == "kadru") listOf(1, 3, 5, 8, 10) else listOf(1, 3, 5, 8, 10, 12)
+    val evolvingIds = setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru")
     if (heroId !in evolvingIds) {
         return listOf("hero_$heroId" to currentImageRes)
     }
+    val maxCap = if (heroId == "kadru") KADRU_MAX_LEVEL else MAX_HERO_LEVEL
     val seen = LinkedHashMap<String, Int>()
     tierMinLevels
-        .filter { it <= currentLevel.coerceIn(1, MAX_HERO_LEVEL) }
+        .filter { it <= currentLevel.coerceIn(1, maxCap) }
         .forEach { tierLevel ->
             val key = resolveHeroImageNameForLevel(heroId, tierLevel, "hero_$heroId")
             val resId = resolveHeroDrawableByName(key, currentImageRes)

@@ -34,6 +34,7 @@ import com.example.i18n.tr
 import com.example.model.CardRarity
 import com.example.model.HeroCard
 import com.example.model.HeroType
+import com.example.model.maxUpgradeLevel
 import com.example.model.secretUnlockShardsTarget
 import com.example.ui.theme.*
 
@@ -139,7 +140,7 @@ fun HeroCardItem(
                         // Hero Type Emoji in top-left & Upgrade-Ready arrow in top-right on the same level
                         val canUpgradeLevel = showUpgradeIndicator &&
                             hero.isUnlocked &&
-                            hero.level < hero.rarity.levelCap &&
+                            hero.level < hero.maxUpgradeLevel() &&
                             hero.shards >= hero.shardsNeeded
 
                         Box(
@@ -206,7 +207,14 @@ fun HeroCardItem(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 if (hero.shards >= unlockTarget) {
-                                    Text(text = if (hero.id == "vasilisa") "🏜️" else "❄️", fontSize = 24.sp)
+                                    Text(
+                                        text = when (hero.id) {
+                                            "vasilisa" -> "🏜️"
+                                            "kadru" -> "🦎"
+                                            else -> "❄️"
+                                        },
+                                        fontSize = 24.sp
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Button(
                                         onClick = onOpenSecretHero,

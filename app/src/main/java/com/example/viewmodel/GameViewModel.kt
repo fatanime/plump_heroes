@@ -593,7 +593,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val goldCost = hero.level * 200
         if (profile.gold < goldCost) return
         if (hero.shards < hero.shardsNeeded) return
-        if (hero.level >= hero.rarity.levelCap) return
+        if (hero.level >= hero.maxUpgradeLevel()) return
 
         triggerHaptic(true)
 
@@ -605,7 +605,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val armorInc = if (it.heroType == HeroType.MELEE) 1 else 0
                     it.copy(
                         level = newLvl,
-                        shards = if (newLvl >= it.rarity.levelCap) 0 else it.shards - it.shardsNeeded,
+                        shards = if (newLvl >= it.maxUpgradeLevel()) 0 else it.shards - it.shardsNeeded,
                         shardsNeeded = (it.shardsNeeded * 1.5).toInt(),
                         baseAtk = it.baseAtk + it.atkIncrementPerLevel(),
                         baseArmor = it.baseArmor + armorInc,
@@ -846,7 +846,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     roll < 90 -> CardRarity.RARE
                     else -> CardRarity.MYTHIC
                 }
-                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
                 val hero = selectChestShardHero(eligibleHeroes, targetRarity)
                 val shardAmount = if (hero != null) {
                     resolveBasicChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
@@ -1000,10 +1000,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         triggerHaptic(true)
         _playerProfile.update { it.copy(gems = it.gems - 100) }
 
-        val lockedSecretHeroes = _allHeroes.value.filter { it.isSecret && !it.isUnlocked && it.level < it.rarity.levelCap }
+        val lockedSecretHeroes = _allHeroes.value.filter { it.isSecret && !it.isUnlocked && it.level < it.maxUpgradeLevel() }
         val effectivePermille = (secretDropRoll?.let { it * 10 } ?: secretDropRollPermille).coerceIn(0, 999)
-        val secretHero = if (lockedSecretHeroes.isNotEmpty() && effectivePermille < lockedSecretHeroes.size * 75) {
-            lockedSecretHeroes[effectivePermille / 75]
+        val secretHero = if (lockedSecretHeroes.isNotEmpty() && effectivePermille < lockedSecretHeroes.size * 80) {
+            lockedSecretHeroes[effectivePermille / 80]
         } else null
         val hitSecret = secretHero != null
 
@@ -1016,7 +1016,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             droppedSecretMystery = true
         } else {
             val targetRarity = resolveRarityChestTargetRarity(Random.nextInt(100))
-            val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+            val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
             hero = selectChestShardHero(eligibleHeroes, targetRarity)
             shardAmount = if (hero != null) {
                 resolveRarityChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
@@ -1301,7 +1301,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
             FortuneWheelSectorType.SHARDS_5, FortuneWheelSectorType.SHARDS_10 -> {
                 val amount = if (sector.type == FortuneWheelSectorType.SHARDS_10) 10 else 5
-                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
                 val targetRarity = CardRarity.values().random()
                 val hero = selectChestShardHero(eligibleHeroes, targetRarity)
                 if (hero != null) {
@@ -1323,7 +1323,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
             FortuneWheelSectorType.SECRET_SHARDS_3 -> {
                 val secretHero = _allHeroes.value
-                    .filter { it.isSecret && !it.isUnlocked && it.level < it.rarity.levelCap }
+                    .filter { it.isSecret && !it.isUnlocked && it.level < it.maxUpgradeLevel() }
                     .randomOrNull()
                 if (secretHero != null) {
                     _allHeroes.update { list ->
@@ -1336,7 +1336,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } else {
                     val eligibleHeroes = _allHeroes.value.filter {
-                        (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap
+                        (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel()
                     }
                     val fallbackHero = selectChestShardHero(eligibleHeroes, CardRarity.RARE)
                     if (fallbackHero != null) {
@@ -1448,7 +1448,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         artifacts: List<Artifact> = _inventoryArtifacts.value
     ): Boolean {
         if (template.rewardType == QuestRewardType.SHARDS &&
-            heroes.none { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+            heroes.none { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
         ) {
             return false
         }
@@ -1472,7 +1472,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
             QuestType.WIN_CAREER_BOSS -> chapters.flatMap { it.stages }.any { it.isBoss && it.isUnlocked }
             QuestType.CAST_SKILLS -> unlocked.any { it.level >= 3 }
-            QuestType.UPGRADE_HERO -> unlocked.any { it.level < it.rarity.levelCap }
+            QuestType.UPGRADE_HERO -> unlocked.any { it.level < it.maxUpgradeLevel() }
             QuestType.FORGE_COMBINE -> artifacts.filter { it.rarity != CardRarity.MYTHIC }.groupBy { it.rarity }.any { it.value.size >= 3 }
             QuestType.SELL_ARTIFACT -> artifacts.size >= 2
         }
@@ -1644,7 +1644,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             QuestRewardType.SHARDS -> {
-                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+                val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
                 val hero = selectChestShardHero(eligibleHeroes, CardRarity.values().random())
                 if (hero != null) {
                     _allHeroes.update { list ->
@@ -2270,7 +2270,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 if (!prevRoofCleared) {
-                    val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+                    val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
                     val rewardedHero = selectChestShardHero(eligibleHeroes, CardRarity.RARE)
                         ?: eligibleHeroes.randomOrNull()
                     if (rewardedHero != null) {
@@ -2309,7 +2309,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 if (state.towerFloor >= TOWER_TOTAL_FLOORS && newCleared > prevCleared) {
-                    val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.rarity.levelCap }
+                    val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
                     val rewardedHero = selectChestShardHero(eligibleHeroes, CardRarity.RARE)
                         ?: eligibleHeroes.randomOrNull()
                     if (rewardedHero != null) {
@@ -2386,7 +2386,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             if (shardRarity != null) {
                 val awardedShards = clearedStagePayout?.shards ?: 5
                 val matchingHeroes = _allHeroes.value.filter {
-                    (!it.isSecret || it.isUnlocked) && it.effectiveDropRarity() == shardRarity && it.level < it.rarity.levelCap
+                    (!it.isSecret || it.isUnlocked) && it.effectiveDropRarity() == shardRarity && it.level < it.maxUpgradeLevel()
                 }
                 val rewardedHero = matchingHeroes.randomOrNull()
                 if (rewardedHero != null) {
@@ -2743,7 +2743,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 isSlowed = false,
                 slowRounds = 0,
                 poisonAppliedRound = 0,
-                burnAppliedRound = 0
+                burnAppliedRound = 0,
+                atkBoostPercent = 0,
+                atkBoostRounds = 0,
+                poisonFixedDamage = 0,
+                isHealingBlocked = false
             )
         }
 
@@ -2894,7 +2898,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 isCharmed = false,
                 charmRounds = 0,
                 isSlowed = false,
-                slowRounds = 0
+                slowRounds = 0,
+                atkBoostPercent = 0,
+                atkBoostRounds = 0,
+                poisonFixedDamage = 0,
+                isHealingBlocked = false
             )
         }
         val newAccGold = (run?.accumulatedGold ?: state.coliseumAccumulatedGold) + state.rewardGold

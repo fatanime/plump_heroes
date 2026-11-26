@@ -69,18 +69,22 @@ fun buildBonusGallerySections(
 
     heroes.filter { it.isUnlocked }.forEach { hero ->
         val rawItems = getUnlockedHeroGalleryItems(hero.id, hero.level, hero.imageRes)
-        val tierLevels = HERO_GALLERY_TIER_MIN_LEVELS.filter { it <= hero.level.coerceAtLeast(1) }
+        val heroTiers = if (hero.id == "kadru") listOf(1, 3, 5, 8, 10) else HERO_GALLERY_TIER_MIN_LEVELS
+        val tierLevels = heroTiers.filter { it <= hero.level.coerceAtLeast(1) }
+        val maxForms = heroTiers.size
         val entries = rawItems.mapIndexed { idx, (key, resId) ->
             val tierLv = tierLevels.getOrNull(idx)
             val labelRu = when {
                 key.endsWith("_0") || tierLv == 1 -> "Начальный облик"
                 key.endsWith("_max") || tierLv == 12 -> "Макс. облик (12 ур.)"
+                hero.id == "kadru" && tierLv == 10 -> "Макс. облик (10 ур.)"
                 tierLv != null -> "Облик $tierLv ур."
                 else -> "Облик"
             }
             val labelEn = when {
                 key.endsWith("_0") || tierLv == 1 -> "Base Form"
                 key.endsWith("_max") || tierLv == 12 -> "Max Form (Lv. 12)"
+                hero.id == "kadru" && tierLv == 10 -> "Max Form (Lv. 10)"
                 tierLv != null -> "Lv. $tierLv Form"
                 else -> "Portrait"
             }
@@ -96,8 +100,8 @@ fun buildBonusGallerySections(
             id = "hero_${hero.id}",
             titleRu = hero.name,
             titleEn = hero.localizedName(),
-            subtitleRu = "Ур. ${hero.level} • ${entries.size}/6",
-            subtitleEn = "Lv. ${hero.level} • ${entries.size}/6",
+            subtitleRu = "Ур. ${hero.level} • ${entries.size}/$maxForms",
+            subtitleEn = "Lv. ${hero.level} • ${entries.size}/$maxForms",
             isFinale = false,
             items = entries
         )

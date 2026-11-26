@@ -931,7 +931,7 @@ private val HERO_QUOTES_BY_ID: Map<String, List<TierQuotes>> = mapOf(
 )
 
 fun getHeroPhrasesForLevel(heroId: String, level: Int, context: QuoteContext): List<String> {
-    if (heroId.equals("elios", ignoreCase = true) || heroId.equals("vasilisa", ignoreCase = true)) {
+    if (heroId.equals("elios", ignoreCase = true) || heroId.equals("vasilisa", ignoreCase = true) || heroId.equals("kadru", ignoreCase = true)) {
         return emptyList()
     }
     val tier = quoteTierForLevel(level.coerceIn(1, MAX_HERO_LEVEL))

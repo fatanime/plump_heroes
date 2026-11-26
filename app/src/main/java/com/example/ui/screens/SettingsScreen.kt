@@ -648,8 +648,8 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Добавлены фильтры по стихиям и значки стихий на картах, 8-битная приключенческая музыка для меню и битв, отключение звука и проверка обновлений через GitHub!",
-                                "Added element badges and filters on hero cards, 8-bit adventure music for menu and battles, persistent sound mute, and GitHub update checks!"
+                                "Добавлена еще одна секретная девушка — Кадру (Скверна), фракции реорганизованы в 4 школы (Сталь, Магия, Скверна, Свет) и исправлены ошибки!",
+                                "Added a new secret heroine — Kadru (Blight), reorganized factions into 4 schools (Steel, Magic, Blight, Light), and fixed bugs!"
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),

@@ -198,7 +198,7 @@ fun HeroDetailDialog(
                             Icon(Icons.Default.Star, contentDescription = null, tint = GameGold, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = tr("Уровень ${hero.level} / ${hero.rarity.levelCap}", "Level ${hero.level} / ${hero.rarity.levelCap}"),
+                                text = tr("Уровень ${hero.level} / ${hero.maxUpgradeLevel()}", "Level ${hero.level} / ${hero.maxUpgradeLevel()}"),
                                 color = GameGoldLight,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold,
@@ -237,7 +237,7 @@ fun HeroDetailDialog(
                             Text(text = "$totalHp", color = StatHpRed, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
                         }
 
-                        if (hero.level < hero.rarity.levelCap) {
+                        if (hero.level < hero.maxUpgradeLevel()) {
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // Shards Progress (With spacious padding)
@@ -274,7 +274,7 @@ fun HeroDetailDialog(
 
                 // Level Up Button
                 val goldCost = hero.level * 200
-                val canUpgrade = playerGold >= goldCost && hero.shards >= hero.shardsNeeded && hero.level < hero.rarity.levelCap
+                val canUpgrade = playerGold >= goldCost && hero.shards >= hero.shardsNeeded && hero.level < hero.maxUpgradeLevel()
 
                 Button(
                     onClick = { onUpgradeLevel(hero.id) },
@@ -293,7 +293,7 @@ fun HeroDetailDialog(
                     Icon(Icons.Default.KeyboardArrowUp, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (hero.level >= hero.rarity.levelCap) {
+                        text = if (hero.level >= hero.maxUpgradeLevel()) {
                             tr("МАКСИМАЛЬНЫЙ УРОВЕНЬ", "MAX LEVEL")
                         } else {
                             tr(

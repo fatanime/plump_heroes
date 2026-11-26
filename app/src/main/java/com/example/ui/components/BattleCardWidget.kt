@@ -191,8 +191,18 @@ fun BattleCardWidget(
                                 Text(text = "💫", fontSize = 11.sp)
                             }
                         }
-                        if (card.isAlive && card.isWeakened) {
-                            Text(text = "🤕", fontSize = 10.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (card.isAlive && card.isWeakened) {
+                                Text(text = "🤕", fontSize = 10.sp)
+                            }
+                            if (card.isAlive && card.isHealingBlocked) {
+                                if (card.isWeakened) Spacer(modifier = Modifier.width(2.dp))
+                                Text(text = "💛", fontSize = 10.sp)
+                            }
+                            if (card.isAlive && card.atkBoostPercent > 0) {
+                                if (card.isWeakened || card.isHealingBlocked) Spacer(modifier = Modifier.width(2.dp))
+                                Text(text = "💢", fontSize = 10.sp)
+                            }
                         }
                     }
 
@@ -258,18 +268,19 @@ fun BattleCardWidget(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // ATK Circle
+            val displayAtk = (card.atk * (1.0 + card.atkBoostPercent / 100.0)).toInt().coerceAtLeast(1)
             Surface(
                 shape = CircleShape,
                 color = Color(0xFF1E3A5F),
-                border = BorderStroke(1.dp, StatAtkBlue),
+                border = BorderStroke(1.dp, if (card.atkBoostPercent > 0) Color(0xFFFFD54F) else StatAtkBlue),
                 modifier = Modifier.size(19.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "${card.atk}",
+                        text = "$displayAtk",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color.White,
+                        color = if (card.atkBoostPercent > 0) Color(0xFFFFD54F) else Color.White,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -295,9 +306,19 @@ fun BattleCardWidget(
                 }
             }
 
-            // HP Circle (turns green when poisoned, orange when burned, normal red otherwise)
-            val hpCircleColor = if (card.poisonRounds > 0) Color(0xFF2E7D32) else if (card.burnRounds > 0) Color(0xFFE65100) else Color(0xFFB71C1C)
-            val hpBorderColor = if (card.poisonRounds > 0) Color(0xFF66BB6A) else if (card.burnRounds > 0) Color(0xFFFF9800) else StatHpRed
+            // HP Circle (permanently yellow when Kadru healing-block is active; else green poison / orange burn / red)
+            val hpCircleColor = when {
+                card.isHealingBlocked -> Color(0xFFF9A825)
+                card.poisonRounds > 0 -> Color(0xFF2E7D32)
+                card.burnRounds > 0 -> Color(0xFFE65100)
+                else -> Color(0xFFB71C1C)
+            }
+            val hpBorderColor = when {
+                card.isHealingBlocked -> Color(0xFFFFEE58)
+                card.poisonRounds > 0 -> Color(0xFF66BB6A)
+                card.burnRounds > 0 -> Color(0xFFFF9800)
+                else -> StatHpRed
+            }
             Surface(
                 shape = CircleShape,
                 color = hpCircleColor,
@@ -309,7 +330,7 @@ fun BattleCardWidget(
                         text = "${card.currentHp}",
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color.White,
+                        color = if (card.isHealingBlocked) Color.Black else Color.White,
                         maxLines = 1,
                         softWrap = false
                     )
