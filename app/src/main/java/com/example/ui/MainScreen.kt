@@ -90,6 +90,17 @@ fun MainScreen(viewModel: GameViewModel) {
     var showBonusStageImage by remember { mutableStateOf(false) }
     var showDailyQuestsDialog by remember { mutableStateOf(false) }
     var showCurrencyExchangeDialog by remember { mutableStateOf(false) }
+    var autoBattleStagePrompt by remember { mutableStateOf<CampaignStage?>(null) }
+    var autoBattleCooldownRemainingMs by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(autoBattleStagePrompt, playerProfile.lastCareerAutoBattleTimestamp) {
+        if (autoBattleStagePrompt != null) {
+            while (autoBattleStagePrompt != null) {
+                autoBattleCooldownRemainingMs = viewModel.getCareerAutoBattleCooldownRemainingMs()
+                delay(1000L)
+            }
+        }
+    }
 
     val isTutorialActive = playerProfile.isStoryRead && !playerProfile.isTutorialCompleted
     var tutorialStep by remember { mutableIntStateOf(1) }
@@ -115,6 +126,7 @@ fun MainScreen(viewModel: GameViewModel) {
             availableAppUpdate != null -> viewModel.dismissAvailableAppUpdate()
             showBonusStageImage -> showBonusStageImage = false
             showCurrencyExchangeDialog -> showCurrencyExchangeDialog = false
+            autoBattleStagePrompt != null -> autoBattleStagePrompt = null
             levelUpRewardPopup != null -> viewModel.dismissLevelUpRewardPopup()
             secretHeroUnlockedPopup != null -> viewModel.dismissSecretHeroUnlockedPopup()
             chestOpeningResult != null -> viewModel.dismissChestOpening()
@@ -723,10 +735,13 @@ fun MainScreen(viewModel: GameViewModel) {
                             selectedChapterId = selectedCampaignChapterId,
                             onSelectChapter = { chapterId -> viewModel.selectCampaignChapter(chapterId) },
                             onStartBattle = { stage ->
-                                if (viewModel.isDeckValid()) {
-                                    viewModel.startCampaignBattle(stage)
-                                } else {
+                                if (!viewModel.isDeckValid()) {
                                     showDeckInvalidDialog = true
+                                } else if (stage.clearCount > 10) {
+                                    autoBattleCooldownRemainingMs = viewModel.getCareerAutoBattleCooldownRemainingMs()
+                                    autoBattleStagePrompt = stage
+                                } else {
+                                    viewModel.startCampaignBattle(stage)
                                 }
                             },
                             onBackToHub = { activeHubSection = null }
@@ -830,6 +845,7 @@ fun MainScreen(viewModel: GameViewModel) {
                 }
                 3 -> SummonScreen(
                     profile = playerProfile,
+                    hasLockedSecretHeroes = allHeroes.any { it.isSecret && !it.isUnlocked },
                     onOpenChest = { type -> viewModel.openSummonChest(type) }
                 )
                 4 -> CollectionScreen(
@@ -1011,6 +1027,135 @@ fun MainScreen(viewModel: GameViewModel) {
                 )
             }
 
+            // Career Battle Mode Selection Modal (shown when stage.clearCount > 10)
+            autoBattleStagePrompt?.let { stage ->
+                val isAutoReady = autoBattleCooldownRemainingMs <= 0L
+                val totalSeconds = ((autoBattleCooldownRemainingMs + 999L) / 1000L).coerceAtLeast(0L)
+                val hours = totalSeconds / 3600L
+                val minutes = (totalSeconds % 3600L) / 60L
+                val seconds = totalSeconds % 60L
+                val cooldownFormatted = String.format(java.util.Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+
+                Dialog(onDismissRequest = { autoBattleStagePrompt = null }) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 400.dp)
+                            .testTag("career_battle_mode_dialog"),
+                        shape = RoundedCornerShape(18.dp),
+                        color = GameSurfaceDark,
+                        border = BorderStroke(1.5.dp, GameGold)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 18.dp, vertical = 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = tr("Выбор режима боя", "Choose Battle Mode"),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = GameGoldLight,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = stage.localizedTitle(),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = tr(
+                                    "Выберите обычный поединок или мгновенный расчёт боя текущей колодой в фоне.",
+                                    "Choose a manual duel or an instant background battle calculated with your current deck."
+                                ),
+                                fontSize = 12.sp,
+                                color = Color(0xFFD5C8EE),
+                                textAlign = TextAlign.Center
+                            )
+
+                            Button(
+                                onClick = {
+                                    autoBattleStagePrompt = null
+                                    viewModel.startCampaignBattle(stage)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF7E57C2),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("career_mode_normal_button")
+                            ) {
+                                Text(
+                                    text = tr("⚔️ Обычный бой", "⚔️ Normal Battle"),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    autoBattleStagePrompt = null
+                                    viewModel.startCampaignAutoBattle(stage)
+                                },
+                                enabled = isAutoReady,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GameGold,
+                                    contentColor = Color.Black,
+                                    disabledContainerColor = Color(0xFF2B213E),
+                                    disabledContentColor = Color(0xFF8C7FA8)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("career_mode_auto_button")
+                            ) {
+                                Text(
+                                    text = tr("⚡ Автобой", "⚡ Auto-Battle"),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            if (!isAutoReady) {
+                                Text(
+                                    text = tr(
+                                        "Автобой будет доступен через: $cooldownFormatted",
+                                        "Auto-Battle available in: $cooldownFormatted"
+                                    ),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFFFB74D),
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.testTag("career_auto_cooldown_label")
+                                )
+                            }
+
+                            TextButton(
+                                onClick = { autoBattleStagePrompt = null },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                Text(
+                                    text = tr("Отмена", "Cancel"),
+                                    color = Color(0xFFAFA2C6),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Drop/Unlock Notification Banner (auto-dismisses after 10 seconds)
             latestDropMessage?.let { msg ->
                 Surface(
@@ -1169,8 +1314,9 @@ fun MainScreen(viewModel: GameViewModel) {
                 )
             }
 
-            // Secret Character Unlocked Popup Dialog
-            secretHeroUnlockedPopup?.let { unlockedSecret ->
+            // Secret Character Unlocked Popup Dialog (shown after chest opening dialog closes)
+            if (chestOpeningResult == null) {
+                secretHeroUnlockedPopup?.let { unlockedSecret ->
                 AlertDialog(
                     onDismissRequest = { viewModel.dismissSecretHeroUnlockedPopup() },
                     modifier = Modifier.testTag("secret_hero_unlocked_dialog"),
@@ -1250,6 +1396,7 @@ fun MainScreen(viewModel: GameViewModel) {
                     containerColor = GameSurfaceDark,
                     shape = RoundedCornerShape(16.dp)
                 )
+            }
             }
 
             // Level-Up Celebration & Proportional Reward Popup

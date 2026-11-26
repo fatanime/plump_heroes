@@ -648,8 +648,8 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Добавлена еще одна секретная девушка — Кадру (Скверна), фракции реорганизованы в 4 школы (Сталь, Магия, Скверна, Свет) и исправлены ошибки!",
-                                "Added a new secret heroine — Kadru (Blight), reorganized factions into 4 schools (Steel, Magic, Blight, Light), and fixed bugs!"
+                                "Увеличена награда за повторное прохождение этапов Карьеры, добавлен Автобой для часто пройденных уровней, появилась новая Шкатулка редкостей и обновлён баланс сундуков.",
+                                "Increased repeat clear rewards in Career, added Auto-Battle for repeatedly cleared stages, introduced the new Mystery Casket, and rebalanced chest drops."
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),

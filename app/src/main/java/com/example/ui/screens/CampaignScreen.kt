@@ -285,7 +285,7 @@ fun CampaignStageItem(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isRepeat && !payout.isReducedTier) "+${displayGold}💰 (50%)" else "+${displayGold}💰",
+                        text = "+${displayGold}💰",
                         fontSize = 9.sp,
                         color = GameGoldLight,
                         maxLines = 1,

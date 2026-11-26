@@ -29,12 +29,14 @@ import com.example.ui.theme.*
 enum class ChestType {
     BASIC,      // Базовый сундук (500 gold)
     RARITY,     // Сундук редкостей (100 gems)
+    MYSTERY,    // Шкатулка редкостей (200 gems, скрывается когда все секретные открыты)
     ARTIFACTS   // Сундук с артефактами (1000 gold)
 }
 
 @Composable
 fun SummonScreen(
     profile: PlayerProfile,
+    hasLockedSecretHeroes: Boolean = true,
     onOpenChest: (ChestType) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -85,8 +87,8 @@ fun SummonScreen(
         SummonChestCard(
             title = tr("Сундук редкостей", "Rarity Chest"),
             subtitle = tr(
-                "Большое количество осколков и возможность получить редкий артефакт!",
-                "A large amount of shards and a chance to get a Rare artifact!"
+                "Большое количество осколков редких и особых карт, а также шанс получить особый или редкий артефакт!",
+                "Plenty of hero shards and a chance to obtain a Special or Rare artifact!"
             ),
             imageRes = R.drawable.img_chest_rarity,
             costText = "100 💎",
@@ -96,14 +98,33 @@ fun SummonScreen(
             testTag = "open_rarity_chest"
         )
 
+        if (hasLockedSecretHeroes) {
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 3. Mystery Casket (shown only while at least one secret heroine remains locked)
+            SummonChestCard(
+                title = tr("Шкатулка редкостей", "Mystery Casket"),
+                subtitle = tr(
+                    "Таинственная шкатулка с частицами скрытых героинь. Самым удачливым может сразу открыть одну из них!",
+                    "A mysterious casket holding shards of hidden heroines. The luckiest seekers may unlock one instantly!"
+                ),
+                imageRes = R.drawable.img_chest_mystery,
+                costText = "200 💎",
+                canAfford = profile.gems >= 200,
+                primaryColor = Color(0xFF4DD0E1),
+                onClick = { onOpenChest(ChestType.MYSTERY) },
+                testTag = "open_mystery_chest"
+            )
+        }
+
         Spacer(modifier = Modifier.height(14.dp))
 
-        // 3. Artifact Chest
+        // 4. Artifact Chest
         SummonChestCard(
             title = tr("Сундук с артефактами", "Artifact Chest"),
             subtitle = tr(
-                "Гарантированный артефакт: Базовый, Редкий или Особый для экипировки героинь!",
-                "Guaranteed artifact: Basic, Special, or Rare to equip your heroines!"
+                "Гарантированный Особый или Редкий артефакт для экипировки героинь!",
+                "Guaranteed Special or Rare artifact to equip your heroines!"
             ),
             imageRes = R.drawable.img_chest_artifact,
             costText = "1000 💰",

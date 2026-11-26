@@ -14,8 +14,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -215,6 +217,7 @@ fun ChestOpeningDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 20.dp, vertical = 22.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -227,7 +230,7 @@ fun ChestOpeningDialog(
                                 textAlign = TextAlign.Center
                             )
 
-                            if (result.shardAmount > 0 && (result.isSecretMystery || result.heroImageRes != null)) {
+                            if (result.isSecretMystery || result.heroImageRes != null) {
                                 Box(
                                     modifier = Modifier.size(144.dp),
                                     contentAlignment = Alignment.Center
@@ -306,7 +309,7 @@ fun ChestOpeningDialog(
                                                 .padding(horizontal = 14.dp, vertical = 7.dp)
                                                 .testTag("chest_secret_shards_label")
                                         )
-                                    } else {
+                                    } else if (result.shardAmount > 0) {
                                         val localizedHeroName = localizeHeroNameByIdOrRu(result.heroId, result.heroName ?: "")
                                         Text(
                                             text = tr(
@@ -316,6 +319,19 @@ fun ChestOpeningDialog(
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = GameGoldLight,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                        )
+                                    } else {
+                                        val localizedHeroName = localizeHeroNameByIdOrRu(result.heroId, result.heroName ?: "")
+                                        Text(
+                                            text = tr(
+                                                "✨ Открыт персонаж: $localizedHeroName!",
+                                                "✨ Unlocked: $localizedHeroName!"
+                                            ),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF80DEEA),
+                                            textAlign = TextAlign.Center,
                                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                         )
                                     }
@@ -359,7 +375,7 @@ fun ChestOpeningDialog(
                                 }
                             }
 
-                            if (result.shardAmount <= 0 && result.dropArtifact == null) {
+                            if (!result.isSecretMystery && result.heroImageRes == null && result.shardAmount <= 0 && result.dropArtifact == null) {
                                 Text(
                                     text = result.summaryMessage,
                                     fontSize = 13.sp,

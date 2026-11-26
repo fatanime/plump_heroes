@@ -32,6 +32,7 @@ class BattleViewModel : ViewModel() {
     private var hapticTrigger: ((strong: Boolean) -> Unit)? = null
     private var hasReportedBattleEnd: Boolean = false
     internal var vasilisaCritRollOverride: Int? = null
+    internal var witchWeakenRollOverride: Int? = null
 
     fun setHapticCallback(callback: (strong: Boolean) -> Unit) {
         this.hapticTrigger = callback
@@ -356,13 +357,20 @@ class BattleViewModel : ViewModel() {
         performSkill(attacker, isPlayerAttacker = true)
     }
 
-    internal fun performAttackWithPattern(attacker: BattleCard, primaryTargetSlot: Int, isPlayerAttacker: Boolean) {
+    internal fun performAttackWithPattern(
+        attacker: BattleCard,
+        primaryTargetSlot: Int,
+        isPlayerAttacker: Boolean,
+        silentInstant: Boolean = false
+    ) {
         val state = _battleState.value ?: return
         val targetList = if (isPlayerAttacker) state.enemyCards else state.playerCards
         val aliveTargetSlotsBefore = targetList.filter { it.isAlive }.map { it.slotIndex }.toSet()
         val primaryTarget = targetList.firstOrNull { it.slotIndex == primaryTargetSlot && it.isAlive } ?: return
 
-        hapticTrigger?.invoke(true)
+        if (!silentInstant) {
+            hapticTrigger?.invoke(true)
+        }
 
         val targetsToHit = mutableListOf<BattleCard>()
 
@@ -572,7 +580,7 @@ class BattleViewModel : ViewModel() {
 
         _battleState.update {
             it?.copy(
-                activeAttackAnimation = attackAnim,
+                activeAttackAnimation = if (silentInstant) null else attackAnim,
                 combatTexts = newCombatTexts,
                 actionLogs = updatedLogs,
                 selectedPlayerSlot = nextPlayerSlot,
@@ -581,21 +589,30 @@ class BattleViewModel : ViewModel() {
             )
         }
 
-        viewModelScope.launch {
-            delay((350 / (state.battleSpeed)).toLong())
-            _battleState.update { it?.copy(activeAttackAnimation = null) }
-        }
+        if (!silentInstant) {
+            viewModelScope.launch {
+                delay((350 / (state.battleSpeed)).toLong())
+                _battleState.update { it?.copy(activeAttackAnimation = null) }
+            }
 
-        checkBattleEndOrNextTurn()
+            checkBattleEndOrNextTurn()
+        }
     }
 
-    private fun performSkill(attacker: BattleCard, isPlayerAttacker: Boolean, skillOverride: HeroSkill? = null) {
+    private fun performSkill(
+        attacker: BattleCard,
+        isPlayerAttacker: Boolean,
+        skillOverride: HeroSkill? = null,
+        silentInstant: Boolean = false
+    ) {
         val state = _battleState.value ?: return
         val skill = skillOverride ?: attacker.skill ?: return
         val currentMana = if (isPlayerAttacker) state.playerTeamMana else state.enemyTeamMana
         if (currentMana < skill.energyCost) return
 
-        hapticTrigger?.invoke(true)
+        if (!silentInstant) {
+            hapticTrigger?.invoke(true)
+        }
         attacker.hasActedThisRound = true
         if (attacker.weakenedRounds > 0) {
             attacker.weakenedRounds--
@@ -733,9 +750,9 @@ class BattleViewModel : ViewModel() {
                 }
             }
             "alisa_skill_1" -> {
-                // Каждому союзнику, в том числе и себе 5% от их максимального здоровья в щит
+                // Каждому союзнику, в том числе и себе 10% от их максимального здоровья в щит
                 allies.forEach { ally ->
-                    val shield = (ally.maxHp * 0.05).toInt().coerceAtLeast(1)
+                    val shield = (ally.maxHp * 0.10).toInt().coerceAtLeast(1)
                     ally.currentArmor += shield
                     newCombatTexts.add(FloatingCombatText(System.nanoTime() + ally.slotIndex, ally.slotIndex, ally.isPlayer, "+$shield🤍", CombatTextType.SHIELD_BOOST))
                 }
@@ -819,13 +836,14 @@ class BattleViewModel : ViewModel() {
                 }
             }
             "witch_skill_1" -> {
-                // Наносит по 30% урона обоим врагам на второй линии и ослабляет их атаку на 50% на один ход
+                // Наносит по 30% урона обоим врагам на второй линии и с вероятностью 50% ослабляет их атаку вдвое на один ход
                 val backEnemies = enemies.filter { it.slotIndex in 2..3 }
                 val targets = if (backEnemies.isNotEmpty()) backEnemies else enemies
                 targets.forEach { target ->
                     val dmg = (attacker.atk * 0.30 * dmgMultiplier).toInt().coerceAtLeast(1)
                     dealDamageTo(target, dmg)
-                    if (target.isAlive) {
+                    val weakenRoll = witchWeakenRollOverride ?: Random.nextInt(100)
+                    if (target.isAlive && weakenRoll < 50) {
                         target.isWeakened = true
                         target.weakenedRounds = 1
                         newCombatTexts.add(FloatingCombatText(System.nanoTime() + target.slotIndex + 10, target.slotIndex, target.isPlayer, "🤕 -50%⚔️", CombatTextType.SKILL))
@@ -841,10 +859,10 @@ class BattleViewModel : ViewModel() {
                 }
             }
             "iva_skill_2" -> {
-                // Исцеляет двух любых союзников на 15% от его максимального здоровья
+                // Исцеляет двух любых союзников на 20% от их максимального здоровья
                 val targets = allies.sortedBy { it.currentHp.toFloat() / it.maxHp }.take(2)
                 targets.forEach { target ->
-                    val healAmount = (target.maxHp * 0.15).toInt().coerceAtLeast(1)
+                    val healAmount = (target.maxHp * 0.20).toInt().coerceAtLeast(1)
                     healBattleCard(target, healAmount)
                 }
             }
@@ -1142,7 +1160,7 @@ class BattleViewModel : ViewModel() {
 
         _battleState.update {
             it?.copy(
-                activeAttackAnimation = skillAnim,
+                activeAttackAnimation = if (silentInstant) null else skillAnim,
                 combatTexts = newCombatTexts,
                 actionLogs = updatedLogs,
                 selectedPlayerSlot = nextPlayerSlot,
@@ -1152,12 +1170,14 @@ class BattleViewModel : ViewModel() {
             )
         }
 
-        viewModelScope.launch {
-            delay((450 / (state.battleSpeed)).toLong())
-            _battleState.update { it?.copy(activeAttackAnimation = null) }
-        }
+        if (!silentInstant) {
+            viewModelScope.launch {
+                delay((450 / (state.battleSpeed)).toLong())
+                _battleState.update { it?.copy(activeAttackAnimation = null) }
+            }
 
-        checkBattleEndOrNextTurn()
+            checkBattleEndOrNextTurn()
+        }
     }
 
     private fun checkBattleEndOrNextTurn() {
@@ -1430,6 +1450,211 @@ class BattleViewModel : ViewModel() {
                 }
                 delay(speedDelay)
             }
+        }
+    }
+
+    /**
+     * Simulates an entire Career battle synchronously in the background using the player's actual deck
+     * and stage enemies, then immediately publishes the VICTORY or DEFEAT outcome state.
+     */
+    fun runInstantAutoBattle(
+        playerCards: List<BattleCard>,
+        enemyCards: List<BattleCard>,
+        enemyName: String,
+        enemyTitle: String,
+        rewardGold: Int,
+        rewardGems: Int,
+        rewardExp: Int,
+        rewardArtifact: Artifact? = null,
+        campaignChapter: Int = 1,
+        battleBgRes: Int = com.example.R.drawable.bg_brunhilde,
+        foundAmulet: DiscoveredAmulet? = null,
+        victoryEventMessage: String? = null,
+        campaignStageId: Int? = null,
+        initialPlayerMana: Int = 1,
+        initialEnemyMana: Int = 1,
+        isBoss: Boolean = false,
+        onBattleEnd: (isVictory: Boolean, state: BattleState) -> Unit
+    ) {
+        enemyTurnJob?.cancel()
+        autoBattleJob?.cancel()
+        this.onBattleEndCallback = onBattleEnd
+        this.hasReportedBattleEnd = false
+
+        _battleState.value = BattleState(
+            round = 1,
+            phase = BattlePhase.PLAYER_TURN,
+            playerCards = playerCards,
+            enemyCards = enemyCards,
+            selectedPlayerSlot = null,
+            enemyName = enemyName,
+            enemyTitle = enemyTitle,
+            isArena = false,
+            campaignChapter = campaignChapter,
+            rewardGold = rewardGold,
+            rewardGems = rewardGems,
+            rewardExp = rewardExp,
+            rewardArtifact = rewardArtifact,
+            battleBgRes = battleBgRes,
+            playerTeamMana = initialPlayerMana,
+            enemyTeamMana = initialEnemyMana,
+            actionLogs = listOf(
+                BattleActionLog(
+                    id = System.currentTimeMillis(),
+                    text = tr("⚡ Автобой Карьеры запущен!", "⚡ Career Auto-Battle started!"),
+                    isPlayerAction = true
+                )
+            ),
+            foundAmulet = foundAmulet,
+            victoryEventMessage = victoryEventMessage,
+            showArenaFirstTurnModal = false,
+            isPlayerFirstTurn = true,
+            campaignStageId = campaignStageId,
+            isBoss = isBoss,
+            isAutoBattle = true
+        )
+
+        val maxRounds = 100
+        while (true) {
+            val state = _battleState.value ?: break
+            if (state.enemyCards.none { it.isAlive } || state.playerCards.none { it.isAlive }) break
+            if (state.round > maxRounds) break
+
+            // 1. Player Team Turn
+            for (card in state.playerCards) {
+                val cur = _battleState.value ?: break
+                if (cur.enemyCards.none { it.isAlive } || cur.playerCards.none { it.isAlive }) break
+                if (!card.isAlive || card.hasActedThisRound) continue
+
+                if (card.hasSkipTurnEffect) {
+                    val msg = skipTurnMessage(card)
+                    _battleState.update { it?.copy(actionLogs = it.actionLogs + BattleActionLog(System.nanoTime(), msg, true)) }
+                    card.hasActedThisRound = true
+                    decrementSkipTurnStatuses(card)
+                    continue
+                }
+
+                val candidateSkills = if (card.availableSkills.isNotEmpty()) card.availableSkills else listOfNotNull(card.skill)
+                val affordableSkill = candidateSkills
+                    .filter { cur.playerTeamMana >= it.energyCost }
+                    .maxByOrNull { it.energyCost }
+                if (card.hasMagicUnlocked && affordableSkill != null) {
+                    performSkill(card, isPlayerAttacker = true, skillOverride = affordableSkill, silentInstant = true)
+                } else {
+                    val validTargets = cur.enemyCards.filter { enemy ->
+                        enemy.isAlive && canCardTargetSlot(card, enemy.slotIndex, cur.enemyCards)
+                    }
+                    val target = validTargets.minByOrNull { it.currentHp + it.currentArmor } ?: validTargets.firstOrNull()
+                    if (target != null) {
+                        performAttackWithPattern(card, target.slotIndex, isPlayerAttacker = true, silentInstant = true)
+                    } else {
+                        card.hasActedThisRound = true
+                    }
+                }
+            }
+
+            val afterPlayerTurn = _battleState.value ?: break
+            if (afterPlayerTurn.enemyCards.none { it.isAlive } || afterPlayerTurn.playerCards.none { it.isAlive }) break
+
+            // 2. Enemy Team Pre-Turn DOTs & Enemy Team Turn
+            val enemyDot = processTeamDotEffects(afterPlayerTurn.enemyCards, afterPlayerTurn.round, isPlayerTeam = false)
+            if (enemyDot.logs.isNotEmpty()) {
+                _battleState.update { it?.copy(actionLogs = it.actionLogs + enemyDot.logs) }
+            }
+            if ((_battleState.value?.enemyCards?.none { it.isAlive }) == true) break
+
+            val enemyTurnState = _battleState.value ?: break
+            for (enemy in enemyTurnState.enemyCards) {
+                val cur = _battleState.value ?: break
+                if (cur.playerCards.none { it.isAlive } || cur.enemyCards.none { it.isAlive }) break
+                if (!enemy.isAlive || enemy.hasActedThisRound) continue
+
+                if (enemy.hasSkipTurnEffect) {
+                    val msg = skipTurnMessage(enemy)
+                    _battleState.update { it?.copy(actionLogs = it.actionLogs + BattleActionLog(System.nanoTime(), msg, false)) }
+                    enemy.hasActedThisRound = true
+                    decrementSkipTurnStatuses(enemy)
+                    continue
+                }
+
+                val validTargets = cur.playerCards.filter { pc ->
+                    pc.isAlive && canCardTargetSlot(enemy, pc.slotIndex, cur.playerCards)
+                }
+                if (validTargets.isNotEmpty()) {
+                    val target = if (cur.campaignChapter >= 3) {
+                        validTargets.minByOrNull { it.currentHp + it.currentArmor } ?: validTargets.first()
+                    } else {
+                        validTargets.random()
+                    }
+                    val candidateSkills = if (enemy.availableSkills.isNotEmpty()) enemy.availableSkills else listOfNotNull(enemy.skill)
+                    val affordableSkill = candidateSkills
+                        .filter { cur.enemyTeamMana >= it.energyCost }
+                        .maxByOrNull { it.energyCost }
+                    if (enemy.hasMagicUnlocked && affordableSkill != null) {
+                        performSkill(enemy, isPlayerAttacker = false, skillOverride = affordableSkill, silentInstant = true)
+                    } else {
+                        performAttackWithPattern(enemy, target.slotIndex, isPlayerAttacker = false, silentInstant = true)
+                    }
+                } else {
+                    enemy.hasActedThisRound = true
+                }
+            }
+
+            val afterEnemyTurn = _battleState.value ?: break
+            if (afterEnemyTurn.enemyCards.none { it.isAlive } || afterEnemyTurn.playerCards.none { it.isAlive }) break
+
+            // 3. Advance Round & Apply Start-of-Round Player DOTs
+            afterEnemyTurn.playerCards.forEach { it.hasActedThisRound = false }
+            afterEnemyTurn.enemyCards.forEach { it.hasActedThisRound = false }
+            val nextRound = afterEnemyTurn.round + 1
+            _battleState.update { current ->
+                current?.copy(
+                    round = nextRound,
+                    phase = BattlePhase.PLAYER_TURN,
+                    playerTeamMana = (current.playerTeamMana + 1).coerceAtMost(current.playerMaxMana),
+                    enemyTeamMana = (current.enemyTeamMana + 1).coerceAtMost(current.enemyMaxMana),
+                    selectedPlayerSlot = null
+                )
+            }
+
+            val nextRoundState = _battleState.value ?: break
+            val playerDot = processTeamDotEffects(nextRoundState.playerCards, nextRound, isPlayerTeam = true)
+            if (playerDot.logs.isNotEmpty()) {
+                _battleState.update { it?.copy(actionLogs = it.actionLogs + playerDot.logs) }
+            }
+            if ((_battleState.value?.playerCards?.none { it.isAlive }) == true) break
+        }
+
+        val finalRaw = _battleState.value ?: return
+        val isVictory = finalRaw.enemyCards.none { it.isAlive } && finalRaw.playerCards.any { it.isAlive }
+        val vQuote = if (isVictory) {
+            val speaker = finalRaw.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
+                ?: finalRaw.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }
+            speaker?.let { pickHeroBattleQuote(it, QuoteContext.VICTORY) }
+        } else null
+
+        _battleState.update { current ->
+            current?.copy(
+                phase = if (isVictory) BattlePhase.VICTORY else BattlePhase.DEFEAT,
+                activeAttackAnimation = null,
+                dotHitTargets = emptySet(),
+                isProcessingRoundEffects = false,
+                selectedPlayerSlot = null,
+                victoryQuote = vQuote,
+                actionLogs = if (vQuote != null) {
+                    current.actionLogs + BattleActionLog(
+                        id = System.currentTimeMillis(),
+                        text = "🏆 ${vQuote.heroName}: «${vQuote.text}»",
+                        isPlayerAction = true
+                    )
+                } else current.actionLogs
+            )
+        }
+
+        if (!hasReportedBattleEnd) {
+            hasReportedBattleEnd = true
+            val resolvedState = _battleState.value ?: return
+            onBattleEndCallback?.invoke(isVictory, resolvedState)
         }
     }
 

@@ -327,8 +327,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val left = (targetShards - hero.shards).coerceAtLeast(1)
                     showLockedHeroMessage(
                         tr(
-                            "Секретный персонаж! Находите её частицы в Сундуке редкостей (осталось: $left).",
-                            "Secret character! Collect shards in the Rarity Chest ($left left)."
+                            "Секретный персонаж! Находите её частицы в Шкатулке редкостей (осталось: $left).",
+                            "Secret character! Collect shards in the Mystery Casket ($left left)."
                         )
                     )
                 }
@@ -915,6 +915,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             com.example.ui.screens.ChestType.RARITY -> {
                 openRarityChestWithSecretRoll()
             }
+            com.example.ui.screens.ChestType.MYSTERY -> {
+                openMysteryCasketWithRoll()
+            }
             com.example.ui.screens.ChestType.ARTIFACTS -> {
                 val profile = _playerProfile.value
                 val catalog = repository.getArtifactCatalog().values.toList()
@@ -922,14 +925,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 triggerHaptic(true)
                 _playerProfile.update { it.copy(gold = it.gold - 1000) }
 
-                // Drops: 55% Basic artifact, 30% Rare artifact, 15% Special artifact
+                // Only Special (60%) and Rare (40%) artifacts; Basic artifacts drop only in Basic Chest
                 val roll = Random.nextInt(100)
-                val targetRarity = when {
-                    roll < 55 -> CardRarity.BASIC
-                    roll < 85 -> CardRarity.RARE
-                    else -> CardRarity.SPECIAL
+                val targetRarity = if (roll < 60) CardRarity.SPECIAL else CardRarity.RARE
+                val eligibleCatalog = catalog.filter {
+                    it.rarity == CardRarity.SPECIAL || it.rarity == CardRarity.RARE
                 }
-                val pool = catalog.filter { it.rarity == targetRarity }.ifEmpty { catalog }
+                val pool = eligibleCatalog.filter { it.rarity == targetRarity }.ifEmpty { eligibleCatalog }
                 val art = pool.random()
                 val uniqueArt = art.copy(id = "${art.id}_${System.currentTimeMillis()}_${Random.nextInt(1000)}")
                 _inventoryArtifacts.update { it + uniqueArt }
@@ -983,16 +985,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     internal fun resolveRarityChestTargetRarity(roll: Int): CardRarity = when {
-        roll < 15 -> CardRarity.BASIC
-        roll < 55 -> CardRarity.SPECIAL
-        roll < 80 -> CardRarity.RARE
+        roll < 11 -> CardRarity.BASIC
+        roll < 53 -> CardRarity.SPECIAL
+        roll < 84 -> CardRarity.RARE
         else -> CardRarity.MYTHIC
     }
 
     internal fun openRarityChestWithSecretRoll(
         secretDropRoll: Int? = null,
         fixedSecretShards: Int? = null,
-        secretDropRollPermille: Int = Random.nextInt(1000)
+        secretDropRollPermille: Int = Random.nextInt(1000),
+        artifactRoll: Int = Random.nextInt(100)
     ) {
         val profile = _playerProfile.value
         val catalog = repository.getArtifactCatalog().values.toList()
@@ -1000,28 +1003,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         triggerHaptic(true)
         _playerProfile.update { it.copy(gems = it.gems - 100) }
 
-        val lockedSecretHeroes = _allHeroes.value.filter { it.isSecret && !it.isUnlocked && it.level < it.maxUpgradeLevel() }
-        val effectivePermille = (secretDropRoll?.let { it * 10 } ?: secretDropRollPermille).coerceIn(0, 999)
-        val secretHero = if (lockedSecretHeroes.isNotEmpty() && effectivePermille < lockedSecretHeroes.size * 80) {
-            lockedSecretHeroes[effectivePermille / 80]
-        } else null
-        val hitSecret = secretHero != null
-
-        var droppedSecretMystery = false
-        val hero: HeroCard?
-        val shardAmount: Int
-        if (hitSecret && secretHero != null) {
-            hero = secretHero
-            shardAmount = (fixedSecretShards ?: Random.nextInt(1, 7)).coerceIn(1, 6)
-            droppedSecretMystery = true
-        } else {
-            val targetRarity = resolveRarityChestTargetRarity(Random.nextInt(100))
-            val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
-            hero = selectChestShardHero(eligibleHeroes, targetRarity)
-            shardAmount = if (hero != null) {
-                resolveRarityChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
-            } else 0
-        }
+        val targetRarity = resolveRarityChestTargetRarity(Random.nextInt(100))
+        val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
+        val hero = selectChestShardHero(eligibleHeroes, targetRarity)
+        val shardAmount = if (hero != null) {
+            resolveRarityChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
+        } else 0
 
         if (hero != null) {
             _allHeroes.update { list ->
@@ -1029,12 +1016,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 5% chance to drop random rare artifact; if all regular heroes are maxed and secret didn't proc, award rare/special artifact (or coins)
+        // 5% chance to drop Special or Rare artifact (or guaranteed fallback if all regular heroes are maxed); never Basic
         var droppedArt: Artifact? = null
         var dropBonusText = ""
-        val rareArtifacts = catalog.filter { it.rarity == CardRarity.RARE }
-        if (Random.nextInt(100) < 5 || hero == null) {
-            val pool = rareArtifacts.ifEmpty { catalog.filter { it.rarity == CardRarity.SPECIAL } }.ifEmpty { catalog }
+        val specialAndRareArtifacts = catalog.filter {
+            it.rarity == CardRarity.SPECIAL || it.rarity == CardRarity.RARE
+        }
+        if (artifactRoll < 5 || hero == null) {
+            val preferredRarity = if (Random.nextBoolean()) CardRarity.RARE else CardRarity.SPECIAL
+            val pool = specialAndRareArtifacts
+                .filter { it.rarity == preferredRarity }
+                .ifEmpty { specialAndRareArtifacts }
             val art = pool.randomOrNull()
             if (art != null) {
                 val uniqueArt = art.copy(id = "${art.id}_${System.currentTimeMillis()}_${Random.nextInt(1000)}")
@@ -1042,8 +1034,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 repository.saveArtifacts(_inventoryArtifacts.value)
                 droppedArt = uniqueArt
                 dropBonusText = tr(
-                    " + Редкий артефакт: ${uniqueArt.name}!",
-                    " + Rare artifact: ${uniqueArt.localizedName()}!"
+                    " + ${uniqueArt.rarity.displayName} артефакт: ${uniqueArt.name}!",
+                    " + ${uniqueArt.rarity.localizedName()} artifact: ${uniqueArt.localizedName()}!"
                 )
             }
         }
@@ -1054,21 +1046,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             _playerProfile.update { it.copy(gold = it.gold + fallbackGold) }
         }
 
+        val heroNameLoc = hero?.localizedName()
         val summary = when {
-            hero != null -> {
-                if (droppedSecretMystery) {
-                    tr(
-                        "Частицы: +$shardAmount 🧩 (секретный персонаж)$dropBonusText",
-                        "Shards: +$shardAmount 🧩 (secret character)$dropBonusText"
-                    )
-                } else {
-                    val heroNameLoc = hero.localizedName()
-                    tr(
-                        "Осколки ${hero.name}: +$shardAmount 🧩$dropBonusText",
-                        "$heroNameLoc shards: +$shardAmount 🧩$dropBonusText"
-                    )
-                }
-            }
+            hero != null -> tr(
+                "Осколки ${hero.name}: +$shardAmount 🧩$dropBonusText",
+                "$heroNameLoc shards: +$shardAmount 🧩$dropBonusText"
+            )
             droppedArt != null -> tr(
                 "Получен артефакт: ${droppedArt.name} (${droppedArt.rarity.displayName})!",
                 "Received artifact: ${droppedArt.localizedName()} (${droppedArt.rarity.localizedName()})!"
@@ -1078,21 +1061,112 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 "Coins: +$fallbackGold 💰"
             )
         }
-        if (droppedSecretMystery) {
-            postDropMessage(summary)
-        }
         _chestOpeningResult.value = ChestOpeningResult(
             chestTitle = tr("Сундук редкостей", "Rarity Chest"),
-            accentColorHex = if (droppedSecretMystery) 0xFF4DD0E1L else 0xFFBA68C8L,
+            accentColorHex = 0xFFBA68C8L,
             chestImageRes = com.example.R.drawable.img_chest_rarity,
-            heroId = if (droppedSecretMystery) null else hero?.id,
-            heroName = if (droppedSecretMystery) tr("секретный персонаж", "secret character") else hero?.localizedName(),
-            heroImageRes = if (droppedSecretMystery) null else hero?.imageRes,
+            heroId = hero?.id,
+            heroName = heroNameLoc,
+            heroImageRes = hero?.imageRes,
             shardAmount = shardAmount,
             dropArtifact = droppedArt,
             summaryMessage = summary,
-            isSecretMystery = droppedSecretMystery
+            isSecretMystery = false
         )
+        repository.savePlayerProfile(_playerProfile.value)
+        repository.saveHeroesState(_allHeroes.value)
+        advanceDailyQuestProgress(QuestType.OPEN_CHESTS, 1)
+    }
+
+    internal fun openMysteryCasketWithRoll(
+        outcomeRollPermille: Int = Random.nextInt(1000),
+        fixedSecretShards: Int? = null,
+        targetSecretHeroId: String? = null
+    ) {
+        val profile = _playerProfile.value
+        val lockedSecrets = _allHeroes.value.filter { it.isSecret && !it.isUnlocked }
+        if (lockedSecrets.isEmpty() || profile.gems < 200) return
+
+        triggerHaptic(true)
+        _playerProfile.update { it.copy(gems = it.gems - 200) }
+
+        val chosenHero = targetSecretHeroId
+            ?.let { id -> lockedSecrets.firstOrNull { it.id == id } }
+            ?: lockedSecrets.random()
+
+        val permille = outcomeRollPermille.coerceIn(0, 999)
+        if (permille < 5) {
+            // 0.5%: instant unlock of a random locked secret heroine
+            var unlockedHero: HeroCard? = null
+            _allHeroes.update { list ->
+                list.map {
+                    if (it.id == chosenHero.id) {
+                        val updated = it.copy(
+                            isUnlocked = true,
+                            shards = it.shards,
+                            shardsNeeded = 10
+                        ).withUpdatedImageForLevel()
+                        unlockedHero = updated
+                        updated
+                    } else it
+                }
+            }
+            val currentOffer = _fortuneWheelOffer.value
+            if (currentOffer != null && _fortuneWheelResult.value == null) {
+                _fortuneWheelOffer.value = currentOffer.copy(
+                    sectors = buildFortuneWheelSectors()
+                )
+            }
+            val resolvedHero = unlockedHero ?: chosenHero.copy(isUnlocked = true, shardsNeeded = 10).withUpdatedImageForLevel()
+            val summary = tr(
+                "Невероятная удача! Открыт секретный персонаж: ${resolvedHero.name}!",
+                "Incredible luck! Unlocked secret character: ${resolvedHero.localizedName()}!"
+            )
+            postDropMessage(summary)
+            _secretHeroUnlockedPopup.value = resolvedHero
+            _chestOpeningResult.value = ChestOpeningResult(
+                chestTitle = tr("Шкатулка редкостей", "Mystery Casket"),
+                accentColorHex = 0xFF4DD0E1L,
+                chestImageRes = com.example.R.drawable.img_chest_mystery,
+                heroId = resolvedHero.id,
+                heroName = resolvedHero.localizedName(),
+                heroImageRes = resolvedHero.imageRes,
+                shardAmount = 0,
+                dropArtifact = null,
+                summaryMessage = summary,
+                isSecretMystery = false
+            )
+        } else {
+            val shardAmount = fixedSecretShards ?: when {
+                permille < 105 -> 15                  // 10% (5..104)
+                permille < 305 -> Random.nextInt(9, 15) // 20% (105..304)
+                permille < 605 -> Random.nextInt(5, 9)  // 30% (305..604)
+                else -> Random.nextInt(2, 5)            // 39.5% (605..999)
+            }
+            _allHeroes.update { list ->
+                list.map {
+                    if (it.id == chosenHero.id) it.copy(shards = it.shards + shardAmount) else it
+                }
+            }
+            val summary = tr(
+                "Частицы: +$shardAmount 🧩 (секретный персонаж)",
+                "Shards: +$shardAmount 🧩 (secret character)"
+            )
+            postDropMessage(summary)
+            _chestOpeningResult.value = ChestOpeningResult(
+                chestTitle = tr("Шкатулка редкостей", "Mystery Casket"),
+                accentColorHex = 0xFF4DD0E1L,
+                chestImageRes = com.example.R.drawable.img_chest_mystery,
+                heroId = null,
+                heroName = tr("секретный персонаж", "secret character"),
+                heroImageRes = null,
+                shardAmount = shardAmount,
+                dropArtifact = null,
+                summaryMessage = summary,
+                isSecretMystery = true
+            )
+        }
+
         repository.savePlayerProfile(_playerProfile.value)
         repository.saveHeroesState(_allHeroes.value)
         advanceDailyQuestProgress(QuestType.OPEN_CHESTS, 1)
@@ -1800,7 +1874,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startCampaignBattle(stage: CampaignStage) {
+    private data class CampaignBattleSetup(
+        val effectiveStage: CampaignStage,
+        val playerBattleCards: List<BattleCard>,
+        val enemyBattleCards: List<BattleCard>,
+        val actualGold: Int,
+        val rewardGems: Int,
+        val rewardExp: Int,
+        val rewardArtifact: Artifact?,
+        val chapterIndex: Int,
+        val campaignBg: Int,
+        val foundAmulet: DiscoveredAmulet?,
+        val victoryEventMessage: String?
+    )
+
+    private fun prepareCampaignBattleSetup(stage: CampaignStage): CampaignBattleSetup {
         val effectiveStage = stage.copy(
             enemyHeroIds = resolveEffectiveCampaignEnemyHeroIds(stage, _allHeroes.value)
         )
@@ -1859,8 +1947,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val enemyBattleCards = effectiveStage.enemyHeroIds.mapIndexed { slotIndex, heroId ->
             val baseHero = baseTemplates.firstOrNull { it.id == heroId } ?: baseTemplates.first()
             val enemyLevel = effectiveStage.enemyLevels.getOrElse(slotIndex) { 1 }
-            val stageIndex = ((effectiveStage.chapterId - 1) * 6 + effectiveStage.stageNumber).coerceAtLeast(1) // 1 to 24
-            val stageProgressionMult = 1.0 + (stageIndex - 1) * 0.04 // Strictly increases from level to level
+            val stageIndex = ((effectiveStage.chapterId - 1) * 6 + effectiveStage.stageNumber).coerceAtLeast(1)
+            val stageProgressionMult = 1.0 + (stageIndex - 1) * 0.04
             val levelMult = (1.0 + (enemyLevel - 1) * 0.16) * (if (effectiveStage.isBoss) 1.25 else 1.0) * 1.25 * stageProgressionMult
             val hp = stageEnemyHps.getOrElse(slotIndex) { (baseHero.baseHp * levelMult).toInt() }
             val armor = if (baseHero.heroType == HeroType.MELEE) (baseHero.baseArmor * levelMult).toInt() else 0
@@ -1900,12 +1988,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             201 -> repository.getArtifactCatalog()["art_spec_7"]
             204 -> repository.getArtifactCatalog()["art_spec_1"]
             302 -> {
-                // На уровне 3-2 выдают редкий или особый
                 val pool = repository.getArtifactCatalog().values.filter { it.rarity == CardRarity.RARE || it.rarity == CardRarity.SPECIAL }
                 pool.randomOrNull() ?: repository.getArtifactCatalog()["art_rare_6"]
             }
             402 -> {
-                // На уровне 4-2 мифический или редкий
                 val pool = repository.getArtifactCatalog().values.filter { it.rarity == CardRarity.MYTHIC || it.rarity == CardRarity.RARE }
                 pool.randomOrNull() ?: repository.getArtifactCatalog()["art_mythic_11"]
             }
@@ -1962,27 +2048,84 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             tr("Вы победили зло и вернули покой в Аврезию!", "You defeated evil and restored peace to Avresia!")
         } else null
 
+        return CampaignBattleSetup(
+            effectiveStage = effectiveStage,
+            playerBattleCards = playerBattleCards,
+            enemyBattleCards = enemyBattleCards,
+            actualGold = actualGold,
+            rewardGems = stagePayout.gems,
+            rewardExp = stagePayout.exp,
+            rewardArtifact = rewardArtifact,
+            chapterIndex = chapterIndex,
+            campaignBg = campaignBg,
+            foundAmulet = foundAmulet,
+            victoryEventMessage = victoryEventMessage
+        )
+    }
+
+    fun getCareerAutoBattleCooldownRemainingMs(nowMs: Long = System.currentTimeMillis()): Long {
+        return computeCareerAutoBattleCooldownRemainingMs(_playerProfile.value, nowMs)
+    }
+
+    fun startCampaignBattle(stage: CampaignStage) {
+        val setup = prepareCampaignBattleSetup(stage)
         battleViewModel.startBattle(
-            playerCards = playerBattleCards,
-            enemyCards = enemyBattleCards,
+            playerCards = setup.playerBattleCards,
+            enemyCards = setup.enemyBattleCards,
             enemyName = stage.localizedTitle(),
             enemyTitle = tr(
                 "Карьера (Ур. сложности ${stage.recommendedPower})",
                 "Career (Power ${stage.recommendedPower})"
             ),
             isArena = false,
-            rewardGold = actualGold,
-            rewardGems = stagePayout.gems,
-            rewardExp = stagePayout.exp,
-            rewardArtifact = rewardArtifact,
-            campaignChapter = chapterIndex,
-            battleBgRes = campaignBg,
-            foundAmulet = foundAmulet,
-            victoryEventMessage = victoryEventMessage,
+            rewardGold = setup.actualGold,
+            rewardGems = setup.rewardGems,
+            rewardExp = setup.rewardExp,
+            rewardArtifact = setup.rewardArtifact,
+            campaignChapter = setup.chapterIndex,
+            battleBgRes = setup.campaignBg,
+            foundAmulet = setup.foundAmulet,
+            victoryEventMessage = setup.victoryEventMessage,
             campaignStageId = stage.id,
-            isBoss = effectiveStage.isBoss,
+            isBoss = setup.effectiveStage.isBoss,
             onBattleEnd = { isVictory, state -> handleBattleFinished(isVictory, state) }
         )
+    }
+
+    fun startCampaignAutoBattle(stage: CampaignStage, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (stage.clearCount <= 10 || !isDeckValid()) return false
+        if (getCareerAutoBattleCooldownRemainingMs(nowMs) > 0L) return false
+
+        _playerProfile.update {
+            it.copy(
+                lastCareerAutoBattleTimestamp = nowMs,
+                maxSeenTimestamp = maxOf(it.maxSeenTimestamp, nowMs)
+            )
+        }
+        repository.savePlayerProfile(_playerProfile.value)
+
+        val setup = prepareCampaignBattleSetup(stage)
+        battleViewModel.runInstantAutoBattle(
+            playerCards = setup.playerBattleCards,
+            enemyCards = setup.enemyBattleCards,
+            enemyName = stage.localizedTitle(),
+            enemyTitle = tr(
+                "Автобой Карьеры (Ур. сложности ${stage.recommendedPower})",
+                "Career Auto-Battle (Power ${stage.recommendedPower})"
+            ),
+            rewardGold = setup.actualGold,
+            rewardGems = setup.rewardGems,
+            rewardExp = setup.rewardExp,
+            rewardArtifact = setup.rewardArtifact,
+            campaignChapter = setup.chapterIndex,
+            battleBgRes = setup.campaignBg,
+            foundAmulet = setup.foundAmulet,
+            victoryEventMessage = setup.victoryEventMessage,
+            campaignStageId = stage.id,
+            isBoss = setup.effectiveStage.isBoss,
+            onBattleEnd = { isVictory, state -> handleBattleFinished(isVictory, state) }
+        )
+        return true
     }
 
     fun startArenaBattle(bot: ArenaBot) {
@@ -2344,7 +2487,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                             if (isImprovedRun) {
                                 if (stage.clearCount <= 5) {
                                     // Replayed with more stars within normal repeat window -> award full initial gold
-                                    val bonusGold = stage.rewardGold - (stage.rewardGold * 0.5f).toInt()
+                                    val bonusGold = stage.rewardGold - (stage.rewardGold * 0.55f).toInt()
                                     _playerProfile.update { p -> p.copy(gold = p.gold + bonusGold) }
                                 }
                                 stage.rewardArtifactId?.let { artId ->

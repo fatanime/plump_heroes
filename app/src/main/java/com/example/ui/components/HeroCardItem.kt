@@ -137,12 +137,7 @@ fun HeroCardItem(
                                 )
                         )
 
-                        // Hero Type Emoji in top-left & Upgrade-Ready arrow in top-right on the same level
-                        val canUpgradeLevel = showUpgradeIndicator &&
-                            hero.isUnlocked &&
-                            hero.level < hero.maxUpgradeLevel() &&
-                            hero.shards >= hero.shardsNeeded
-
+                        // Hero Type Emoji in top-left & Element symbol in top-right
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -158,35 +153,13 @@ fun HeroCardItem(
                                 modifier = Modifier.align(Alignment.TopStart)
                             )
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                modifier = Modifier.align(Alignment.TopEnd)
-                            ) {
-                                if (canUpgradeLevel) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xD9102A18))
-                                            .border(1.dp, Color(0xFF76FF03), CircleShape)
-                                            .testTag("hero_upgrade_ready_${hero.id}")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowUp,
-                                            contentDescription = tr("Доступно повышение уровня", "Level up available"),
-                                            tint = Color(0xFF76FF03),
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = hero.element.symbol,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.testTag("hero_element_${hero.id}")
-                                )
-                            }
+                            Text(
+                                text = hero.element.symbol,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .testTag("hero_element_${hero.id}")
+                            )
                         }
                     } else if (hero.isSecret) {
                         val unlockTarget = hero.secretUnlockShardsTarget()
@@ -286,26 +259,54 @@ fun HeroCardItem(
                         }
                     }
 
-                    // Level & Star Badge at bottom of art
+                    // Level & Star Badge + Upgrade-Ready indicator on the same bottom line
+                    val canUpgradeLevel = showUpgradeIndicator &&
+                        hero.isUnlocked &&
+                        hero.level < hero.maxUpgradeLevel() &&
+                        hero.shards >= hero.shardsNeeded
+
                     Row(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 6.dp, bottom = 4.dp),
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = tr("Уровень", "Level"),
-                            tint = frameColor,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = tr("Ур. ${hero.level}", "Lv. ${hero.level}"),
-                            color = frameColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = tr("Уровень", "Level"),
+                                tint = frameColor,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = tr("Ур. ${hero.level}", "Lv. ${hero.level}"),
+                                color = frameColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (canUpgradeLevel) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xD9102A18))
+                                    .border(1.dp, Color(0xFF76FF03), CircleShape)
+                                    .testTag("hero_upgrade_ready_${hero.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = tr("Доступно повышение уровня", "Level up available"),
+                                    tint = Color(0xFF76FF03),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
                     }
                 }
 

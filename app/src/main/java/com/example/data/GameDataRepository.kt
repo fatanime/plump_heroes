@@ -102,7 +102,7 @@ class GameDataRepository(context: Context) {
                 imageRes = R.drawable.hero_witch_0,
                 activeSkillId = "witch_skill_1",
                 availableSkills = listOf(
-                    HeroSkill("witch_skill_1", "Вытягивание сил", "Наносит по 30% урона обоим врагам на второй линии и ослабляет их атаку на 25% на один ход.", energyCost = 2, skillType = SkillType.OFFENSIVE, unlockLevel = 3)
+                    HeroSkill("witch_skill_1", "Вытягивание сил", "Наносит по 30% урона обоим врагам на второй линии и с вероятностью 50% ослабляет их атаку вдвое на один ход.", energyCost = 2, skillType = SkillType.OFFENSIVE, unlockLevel = 3)
                 ),
                 lore = "Атакует врагов на второй линии. Ведьма с Болотного Моря, оберегающая свои владения от чужаков.",
                 isUnlocked = true, // Playable card 4 (Ranged 2)
@@ -126,7 +126,7 @@ class GameDataRepository(context: Context) {
                 imageRes = R.drawable.hero_alisa_0,
                 activeSkillId = "alisa_skill_1",
                 availableSkills = listOf(
-                    HeroSkill("alisa_skill_1", "Бастион обороны", "Каждому союзнику, в том числе и себе 5% от их максимального здоровья в щит, даже если он нулевой.", energyCost = 2, skillType = SkillType.DEFENSIVE, unlockLevel = 3),
+                    HeroSkill("alisa_skill_1", "Бастион обороны", "Каждому союзнику, в том числе и себе 10% от их максимального здоровья в щит, даже если он нулевой.", energyCost = 2, skillType = SkillType.DEFENSIVE, unlockLevel = 3),
                     HeroSkill("alisa_skill_2", "Молот возмездия", "150% урон одному врагу", energyCost = 3, skillType = SkillType.OFFENSIVE, unlockLevel = 5)
                 ),
                 lore = "Валькирия на службе короля Людвига, правителя южных земель.",
@@ -151,7 +151,7 @@ class GameDataRepository(context: Context) {
                 activeSkillId = "iva_skill_1",
                 availableSkills = listOf(
                     HeroSkill("iva_skill_1", "Живительный росток", "Исцеляет одного наиболее раненого союзника на 25% от его максимального здоровья", energyCost = 2, skillType = SkillType.SUPPORT, unlockLevel = 3),
-                    HeroSkill("iva_skill_2", "Древесный бальзам", "Исцеляет двух любых союзников на 15% от их максимального здоровья", energyCost = 3, skillType = SkillType.SUPPORT, unlockLevel = 5)
+                    HeroSkill("iva_skill_2", "Древесный бальзам", "Исцеляет двух любых союзников на 20% от их максимального здоровья", energyCost = 3, skillType = SkillType.SUPPORT, unlockLevel = 5)
                 ),
                 lore = "Атакует врагов на второй линии. Травница, способная исцелить любые раны соратниц и помочь им выстоять даже против грозных противников.",
                 isUnlocked = false,
@@ -1321,6 +1321,7 @@ class GameDataRepository(context: Context) {
             putString("viewed_gallery_keys", profile.viewedGalleryImageKeys.joinToString(","))
             putBoolean("sound_muted", profile.isSoundMuted)
             putInt("skipped_update_version_code", profile.skippedUpdateVersionCode)
+            putLong("last_career_auto_battle_timestamp", profile.lastCareerAutoBattleTimestamp)
             apply()
         }
     }
@@ -1437,7 +1438,8 @@ class GameDataRepository(context: Context) {
             towerDeckHeroIds = towerDeckHeroIds,
             viewedGalleryImageKeys = viewedGalleryImageKeys,
             isSoundMuted = prefs.getBoolean("sound_muted", false),
-            skippedUpdateVersionCode = prefs.getInt("skipped_update_version_code", 0)
+            skippedUpdateVersionCode = prefs.getInt("skipped_update_version_code", 0),
+            lastCareerAutoBattleTimestamp = prefs.getLong("last_career_auto_battle_timestamp", 0L)
         )
     }
 
@@ -1687,6 +1689,7 @@ data class SaveImportResult(
             put("viewedGalleryImageKeys", org.json.JSONArray(profile.viewedGalleryImageKeys.toList()))
             put("isSoundMuted", profile.isSoundMuted)
             put("skippedUpdateVersionCode", profile.skippedUpdateVersionCode)
+            put("lastCareerAutoBattleTimestamp", profile.lastCareerAutoBattleTimestamp)
         }
         root.put("profile", pObj)
 
@@ -1840,7 +1843,8 @@ data class SaveImportResult(
                 towerDeckHeroIds = towerDeckList,
                 viewedGalleryImageKeys = viewedGallerySet,
                 isSoundMuted = pObj.optBoolean("isSoundMuted", false),
-                skippedUpdateVersionCode = pObj.optInt("skippedUpdateVersionCode", 0)
+                skippedUpdateVersionCode = pObj.optInt("skippedUpdateVersionCode", 0),
+                lastCareerAutoBattleTimestamp = pObj.optLong("lastCareerAutoBattleTimestamp", 0L)
             )
 
             val hArray = root.optJSONArray("heroes")

@@ -33,21 +33,21 @@ data class CareerStagePayout(
 fun calculateCareerStagePayout(stage: CampaignStage, baseShards: Int = 5): CareerStagePayout {
     return when {
         stage.clearCount > 10 -> CareerStagePayout(
-            gold = (stage.rewardGold * 0.20f).toInt().coerceAtLeast(1),
-            gems = (stage.rewardGems * 0.20f).toInt().coerceAtLeast(1),
-            exp = (stage.rewardExp * 0.20f).toInt().coerceAtLeast(1),
-            shards = kotlin.math.round(baseShards * 0.20f).toInt().coerceAtLeast(1),
+            gold = (stage.rewardGold * 0.25f).toInt().coerceAtLeast(1),
+            gems = (stage.rewardGems * 0.25f).toInt().coerceAtLeast(1),
+            exp = (stage.rewardExp * 0.25f).toInt().coerceAtLeast(1),
+            shards = kotlin.math.round(baseShards * 0.25f).toInt().coerceAtLeast(1),
             isReducedTier = true
         )
         stage.clearCount > 5 -> CareerStagePayout(
-            gold = (stage.rewardGold * 0.35f).toInt().coerceAtLeast(1),
-            gems = (stage.rewardGems * 0.35f).toInt().coerceAtLeast(1),
-            exp = (stage.rewardExp * 0.35f).toInt().coerceAtLeast(1),
-            shards = kotlin.math.round(baseShards * 0.35f).toInt().coerceAtLeast(1),
+            gold = (stage.rewardGold * 0.40f).toInt().coerceAtLeast(1),
+            gems = (stage.rewardGems * 0.40f).toInt().coerceAtLeast(1),
+            exp = (stage.rewardExp * 0.40f).toInt().coerceAtLeast(1),
+            shards = kotlin.math.round(baseShards * 0.40f).toInt().coerceAtLeast(1),
             isReducedTier = true
         )
         stage.stars > 0 -> CareerStagePayout(
-            gold = (stage.rewardGold * 0.50f).toInt(),
+            gold = (stage.rewardGold * 0.55f).toInt(),
             gems = stage.rewardGems,
             exp = stage.rewardExp,
             shards = baseShards,
@@ -129,8 +129,27 @@ data class PlayerProfile(
     val towerDeckHeroIds: List<String?> = emptyList(),
     val viewedGalleryImageKeys: Set<String> = emptySet(),
     val isSoundMuted: Boolean = false,
-    val skippedUpdateVersionCode: Int = 0
+    val skippedUpdateVersionCode: Int = 0,
+    val lastCareerAutoBattleTimestamp: Long = 0L
 )
+
+const val CAREER_AUTO_BATTLE_COOLDOWN_MS = 2L * 60L * 60L * 1000L
+
+fun computeCareerAutoBattleCooldownRemainingMs(
+    profile: PlayerProfile,
+    nowMs: Long = System.currentTimeMillis()
+): Long {
+    if (profile.lastCareerAutoBattleTimestamp <= 0L) return 0L
+    if (nowMs + 5 * 60_000L < profile.maxSeenTimestamp) {
+        return CAREER_AUTO_BATTLE_COOLDOWN_MS
+    }
+    val elapsed = nowMs - profile.lastCareerAutoBattleTimestamp
+    return if (elapsed < 0L) {
+        CAREER_AUTO_BATTLE_COOLDOWN_MS
+    } else {
+        (CAREER_AUTO_BATTLE_COOLDOWN_MS - elapsed).coerceAtLeast(0L)
+    }
+}
 
 const val COLISEUM_DAILY_ENTRY_LIMIT = 2
 

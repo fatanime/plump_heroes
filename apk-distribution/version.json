@@ -1,7 +1,7 @@
 {
-  "versionCode": 33,
-  "versionName": "1.4",
-  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1_4.apk",
-  "changelogRu": "Добавлена еще одна секретная девушка — Кадру (Скверна), фракции реорганизованы в 4 школы (Сталь, Магия, Скверна, Свет) и исправлены ошибки.",
-  "changelogEn": "Added a new secret heroine — Kadru (Blight), reorganized factions into 4 schools (Steel, Magic, Blight, Light), and fixed bugs."
+  "versionCode": 34,
+  "versionName": "1.4.1",
+  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1_4_1.apk",
+  "changelogRu": "Увеличена награда за повторное прохождение этапов Карьеры, добавлен Автобой для часто пройденных уровней, появилась новая Шкатулка редкостей и обновлён баланс сундуков.",
+  "changelogEn": "Increased repeat clear rewards in Career, added Auto-Battle for repeatedly cleared stages, introduced the new Mystery Casket, and rebalanced chest drops."
 }

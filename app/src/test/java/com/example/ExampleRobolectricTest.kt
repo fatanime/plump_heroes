@@ -1988,7 +1988,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `secret hero Elios drops only from Rarity Chest anonymously and unlocks via Open action at 50 shards`() {
+    fun `secret hero Elios drops only from Mystery Casket anonymously and unlocks via Open action at 50 shards`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val repo = GameDataRepository(app)
         val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
@@ -2022,24 +2022,21 @@ class ExampleRobolectricTest {
 
             val vm = GameViewModel(app)
 
-            // 1. Basic chests & Daily Quests must NEVER drop locked secret shards or unlock Elios
-            repeat(30) {
+            // 1. Basic chests, Rarity chests, & Daily Quests must NEVER drop locked secret shards
+            repeat(20) {
                 vm.openSummonChest(com.example.ui.screens.ChestType.BASIC)
+                vm.dismissChestOpening()
+                vm.openSummonChest(com.example.ui.screens.ChestType.RARITY)
+                assertFalse(vm.chestOpeningResult.value?.isSecretMystery ?: true)
                 vm.dismissChestOpening()
             }
             vm.claimDailyQuestReward("q_secret_test")
-            val eliosAfterBasics = vm.allHeroes.value.first { it.id == "elios" }
-            assertEquals("Basic chests and daily quests must give 0 secret shards while locked", 0, eliosAfterBasics.shards)
-            assertFalse(eliosAfterBasics.isUnlocked)
+            val eliosAfterOthers = vm.allHeroes.value.first { it.id == "elios" }
+            assertEquals("Basic/Rarity chests and daily quests must give 0 secret shards while locked", 0, eliosAfterOthers.shards)
+            assertFalse(eliosAfterOthers.isUnlocked)
 
-            // 2. Rarity chest at permille >= 240 (76% case when all 3 secrets locked) does NOT drop secret shards
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 240)
-            assertEquals(0, vm.allHeroes.value.first { it.id == "elios" }.shards)
-            assertFalse(vm.chestOpeningResult.value?.isSecretMystery ?: true)
-            vm.dismissChestOpening()
-
-            // 3. Rarity chest at permille < 80 (8% Elios case) drops 1..6 shards anonymously without naming Эллиос / Ellios
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 40, fixedSecretShards = 6)
+            // 2. Mystery Casket shard drop gives shards anonymously without naming Эллиос / Ellios
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "elios")
             val result = vm.chestOpeningResult.value!!
             assertTrue(result.isSecretMystery)
             assertNull("Mystery drop must not leak portrait resource", result.heroImageRes)
@@ -2053,14 +2050,14 @@ class ExampleRobolectricTest {
             assertEquals(6, vm.allHeroes.value.first { it.id == "elios" }.shards)
             vm.dismissChestOpening()
 
-            // 4. Below 50 shards: inspectHero does not open details and unlockSecretHero is no-op
+            // 3. Below 50 shards: unlockSecretHero is no-op
             vm.unlockSecretHero("elios")
             assertFalse(vm.allHeroes.value.first { it.id == "elios" }.isUnlocked)
             assertNull(vm.secretHeroUnlockedPopup.value)
 
-            // 5. Gather up to 50 shards -> still locked until explicitly opened, then unlockSecretHero opens her + emits popup
+            // 4. Gather up to 50 shards -> still locked until explicitly opened, then unlockSecretHero opens her + emits popup
             repeat(8) {
-                vm.openRarityChestWithSecretRoll(secretDropRollPermille = 20, fixedSecretShards = 6)
+                vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "elios")
                 vm.dismissChestOpening()
             }
             val readyHero = vm.allHeroes.value.first { it.id == "elios" }
@@ -3222,24 +3219,24 @@ class ExampleRobolectricTest {
             assertEquals(5, firstClear.shards)
 
             val fifthClearRepeat = calculateCareerStagePayout(stageTemplate.copy(stars = 4, clearCount = 5))
-            assertEquals((stageTemplate.rewardGold * 0.50f).toInt(), fifthClearRepeat.gold)
+            assertEquals((stageTemplate.rewardGold * 0.55f).toInt(), fifthClearRepeat.gold)
             assertEquals(stageTemplate.rewardGems, fifthClearRepeat.gems)
             assertEquals(stageTemplate.rewardExp, fifthClearRepeat.exp)
             assertEquals(5, fifthClearRepeat.shards)
 
             val overFiveClears = calculateCareerStagePayout(stageTemplate.copy(stars = 4, clearCount = 6))
-            assertEquals((stageTemplate.rewardGold * 0.35f).toInt(), overFiveClears.gold)
-            assertEquals((stageTemplate.rewardGems * 0.35f).toInt(), overFiveClears.gems)
-            assertEquals((stageTemplate.rewardExp * 0.35f).toInt(), overFiveClears.exp)
+            assertEquals((stageTemplate.rewardGold * 0.40f).toInt(), overFiveClears.gold)
+            assertEquals((stageTemplate.rewardGems * 0.40f).toInt(), overFiveClears.gems)
+            assertEquals((stageTemplate.rewardExp * 0.40f).toInt(), overFiveClears.exp)
             assertEquals(2, overFiveClears.shards)
 
             val tenthClear = calculateCareerStagePayout(stageTemplate.copy(stars = 4, clearCount = 10))
             assertEquals(overFiveClears, tenthClear)
 
             val overTenClears = calculateCareerStagePayout(stageTemplate.copy(stars = 4, clearCount = 11))
-            assertEquals((stageTemplate.rewardGold * 0.20f).toInt(), overTenClears.gold)
-            assertEquals((stageTemplate.rewardGems * 0.20f).toInt(), overTenClears.gems)
-            assertEquals((stageTemplate.rewardExp * 0.20f).toInt(), overTenClears.exp)
+            assertEquals((stageTemplate.rewardGold * 0.25f).toInt(), overTenClears.gold)
+            assertEquals((stageTemplate.rewardGems * 0.25f).toInt(), overTenClears.gems)
+            assertEquals((stageTemplate.rewardExp * 0.25f).toInt(), overTenClears.exp)
             assertEquals(1, overTenClears.shards)
 
             // 2. End-to-end ViewModel execution with persisted clearCounts: 5 clears -> 6th (normal repeat) -> 7th (35%) -> 12th (20%)
@@ -3334,7 +3331,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `rarity chest probabilities boost rare by 5 percent and special by 10 percent at cost of basic`() {
+    fun `rarity chest probabilities redistribute 24 percent secret share evenly into Special and Rare`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
         try {
@@ -3342,10 +3339,10 @@ class ExampleRobolectricTest {
             val vm = GameViewModel(app)
             val distribution = (0 until 100).groupingBy { vm.resolveRarityChestTargetRarity(it) }.eachCount()
 
-            assertEquals("Basic must be 15% (reduced from 30% by 15%)", 15, distribution[CardRarity.BASIC])
-            assertEquals("Special must be 40% (boosted by +10% from 30%)", 40, distribution[CardRarity.SPECIAL])
-            assertEquals("Rare must be 25% (boosted by +5% from 20%)", 25, distribution[CardRarity.RARE])
-            assertEquals("Mythic must remain 20%", 20, distribution[CardRarity.MYTHIC])
+            assertEquals("Basic must be 11%", 11, distribution[CardRarity.BASIC])
+            assertEquals("Special must be 42% (+12% from freed secret pool)", 42, distribution[CardRarity.SPECIAL])
+            assertEquals("Rare must be 31% (+12% from freed secret pool)", 31, distribution[CardRarity.RARE])
+            assertEquals("Mythic must be 16%", 16, distribution[CardRarity.MYTHIC])
         } finally {
             prefs.edit().clear().commit()
         }
@@ -3457,7 +3454,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `triple secret drop odds split 8 percent each 24 total and Vasilisa unlocks via Open at 75 shards`() {
+    fun `rarity chest no longer drops locked secrets while Mystery Casket unlocks Vasilisa at 75 shards`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
         try {
@@ -3466,38 +3463,43 @@ class ExampleRobolectricTest {
             repo.savePlayerProfile(PlayerProfile(name = "SecretDuoTester", level = 5, gold = 10000, gems = 5000, isTutorialCompleted = true))
             val vm = GameViewModel(app)
 
-            // All 3 secrets locked: 0..79 -> Elios (8%), 80..159 -> Vasilisa (8%), 160..239 -> Kadru (8%), 240..999 -> normal (76%)
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 159, fixedSecretShards = 6)
+            // Rarity Chest NEVER drops locked secret shards even at permille 0
+            repeat(5) {
+                vm.openRarityChestWithSecretRoll(secretDropRollPermille = 0, fixedSecretShards = 6)
+                assertFalse(vm.chestOpeningResult.value?.isSecretMystery ?: true)
+                vm.dismissChestOpening()
+            }
+            assertEquals(0, vm.allHeroes.value.first { it.id == "elios" }.shards)
+            assertEquals(0, vm.allHeroes.value.first { it.id == "vasilisa" }.shards)
+            assertEquals(0, vm.allHeroes.value.first { it.id == "kadru" }.shards)
+
+            // Mystery Casket awards shards anonymously for Vasilisa
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "vasilisa")
             val res = vm.chestOpeningResult.value!!
             assertTrue(res.isSecretMystery)
             assertNull("Mystery drop must hide heroId", res.heroId)
             assertEquals(6, res.shardAmount)
             assertEquals(6, vm.allHeroes.value.first { it.id == "vasilisa" }.shards)
-            assertEquals(0, vm.allHeroes.value.first { it.id == "elios" }.shards)
-            assertEquals(0, vm.allHeroes.value.first { it.id == "kadru" }.shards)
             assertFalse(res.summaryMessage.contains("Василиса"))
             assertFalse(res.summaryMessage.contains("Vasilisa"))
-            assertTrue(vm.latestDropMessage.value?.contains("секретный персонаж", ignoreCase = true) == true)
             vm.dismissChestOpening()
 
             // Cannot unlock at 74 shards (75 required)
             repeat(11) {
-                vm.openRarityChestWithSecretRoll(secretDropRollPermille = 100, fixedSecretShards = 6)
+                vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "vasilisa")
                 vm.dismissChestOpening()
             }
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 100, fixedSecretShards = 2)
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 2, targetSecretHeroId = "vasilisa")
             vm.dismissChestOpening()
             assertEquals(74, vm.allHeroes.value.first { it.id == "vasilisa" }.shards)
             vm.unlockSecretHero("vasilisa")
             assertFalse(vm.allHeroes.value.first { it.id == "vasilisa" }.isUnlocked)
             assertNull(vm.secretHeroUnlockedPopup.value)
 
-            // Reach 77 shards -> still locked until clicking Open, then unlocks carrying 2 shards + shardsNeeded=10
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 100, fixedSecretShards = 3)
+            // Reach 77 shards -> unlocks carrying 2 shards + shardsNeeded=10
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 3, targetSecretHeroId = "vasilisa")
             vm.dismissChestOpening()
             assertEquals(77, vm.allHeroes.value.first { it.id == "vasilisa" }.shards)
-            assertFalse(vm.allHeroes.value.first { it.id == "vasilisa" }.isUnlocked)
-
             vm.unlockSecretHero("vasilisa")
             val unlockedVasilisa = vm.allHeroes.value.first { it.id == "vasilisa" }
             assertTrue(unlockedVasilisa.isUnlocked)
@@ -3505,25 +3507,6 @@ class ExampleRobolectricTest {
             assertEquals(10, unlockedVasilisa.shardsNeeded)
             assertEquals("vasilisa", vm.secretHeroUnlockedPopup.value?.id)
             vm.dismissSecretHeroUnlockedPopup()
-
-            // Once Vasilisa is unlocked while Elios & Kadru stay locked:
-            // 0..79 (8%) -> Elios mystery, 80..159 (8%) -> Kadru mystery, 160..999 (84%) -> normal drop
-            val eliosShardsBefore = vm.allHeroes.value.first { it.id == "elios" }.shards
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 79, fixedSecretShards = 5)
-            assertTrue(vm.chestOpeningResult.value?.isSecretMystery == true)
-            assertNull(vm.chestOpeningResult.value?.heroId)
-            assertEquals(eliosShardsBefore + 5, vm.allHeroes.value.first { it.id == "elios" }.shards)
-            vm.dismissChestOpening()
-
-            val kadruShardsBefore = vm.allHeroes.value.first { it.id == "kadru" }.shards
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 159, fixedSecretShards = 5)
-            assertTrue(vm.chestOpeningResult.value?.isSecretMystery == true)
-            assertEquals(kadruShardsBefore + 5, vm.allHeroes.value.first { it.id == "kadru" }.shards)
-            vm.dismissChestOpening()
-
-            vm.openRarityChestWithSecretRoll(secretDropRollPermille = 160, fixedSecretShards = 5)
-            assertFalse("Permille 160 must be normal drop once only 2 secrets remain locked", vm.chestOpeningResult.value?.isSecretMystery ?: true)
-            vm.dismissChestOpening()
         } finally {
             prefs.edit().clear().commit()
             GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
@@ -3949,7 +3932,13 @@ class ExampleRobolectricTest {
 
             // 4. Tower is locked below Profile Level 7
             val thursdayCal = java.util.Calendar.getInstance().apply {
-                set(2026, java.util.Calendar.NOVEMBER, 26, 14, 0, 0) // Thursday
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                while (get(java.util.Calendar.DAY_OF_WEEK) != java.util.Calendar.THURSDAY) {
+                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+                set(java.util.Calendar.HOUR_OF_DAY, 14)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
             }
             val thuMs = thursdayCal.timeInMillis
             val thuFloors = repo.getTowerFloorsForDay(TowerDayRule.THURSDAY_MANA_SURGE, playerLevel = 7, avgDeckLevel = 3)
@@ -4157,7 +4146,13 @@ class ExampleRobolectricTest {
 
             // Dedicated Tower squad (assignHeroToTowerSlot) must NOT mutate activeDeckHeroIds
             val baseTimeCal = java.util.Calendar.getInstance().apply {
-                set(2026, java.util.Calendar.NOVEMBER, 26, 12, 0, 0) // 2026-11-26 is Thursday
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+                while (get(java.util.Calendar.DAY_OF_WEEK) != java.util.Calendar.THURSDAY) {
+                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+                set(java.util.Calendar.HOUR_OF_DAY, 12)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
             }
             val thuMs = baseTimeCal.timeInMillis
             repo.savePlayerProfile(
@@ -4790,21 +4785,21 @@ class ExampleRobolectricTest {
             val kadruSlot = coliseumKadruOnly.heroIds.indexOf("kadru")
             assertTrue("Kadru (MELEE) must occupy Coliseum front row slot 0..1, got $kadruSlot", kadruSlot in 0..1)
 
-            // 8% drop window (160..239 when all 3 secrets locked) unlocks Kadru at 75 shards
+            // Mystery Casket shard drops unlock Kadru at 75 shards
             prefs.edit().clear().commit()
             repo.savePlayerProfile(PlayerProfile(name = "KadruChest", level = 10, gold = 50000, gems = 5000, isTutorialCompleted = true))
             val vmDrop = GameViewModel(app)
-            vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 160, fixedSecretShards = 6)
+            vmDrop.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "kadru")
             val dropRes = vmDrop.chestOpeningResult.value!!
             assertTrue(dropRes.isSecretMystery)
             assertEquals(6, vmDrop.allHeroes.value.first { it.id == "kadru" }.shards)
             vmDrop.dismissChestOpening()
 
             repeat(11) {
-                vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 239, fixedSecretShards = 6)
+                vmDrop.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 6, targetSecretHeroId = "kadru")
                 vmDrop.dismissChestOpening()
             }
-            vmDrop.openRarityChestWithSecretRoll(secretDropRollPermille = 200, fixedSecretShards = 3)
+            vmDrop.openMysteryCasketWithRoll(outcomeRollPermille = 500, fixedSecretShards = 3, targetSecretHeroId = "kadru")
             vmDrop.dismissChestOpening()
             assertEquals(75, vmDrop.allHeroes.value.first { it.id == "kadru" }.shards)
             vmDrop.unlockSecretHero("kadru")
@@ -4958,7 +4953,7 @@ class ExampleRobolectricTest {
         bvmHealCheck.executePlayerSkill()
         val alliesAfterHeal = bvmHealCheck.battleState.value!!.playerCards
         assertEquals("Kadru-marked ally must recover 0 HP from Iva heal", 80, alliesAfterHeal.first { it.slotIndex == 0 }.currentHp)
-        assertEquals("Clean ally must heal +15% maxHp (80 -> 110)", 110, alliesAfterHeal.first { it.slotIndex == 1 }.currentHp)
+        assertEquals("Clean ally must heal +20% maxHp (80 -> 120)", 120, alliesAfterHeal.first { it.slotIndex == 1 }.currentHp)
 
         // Also check Vlasta skill 3 self-heal is blocked when marked by Kadru
         val vlastaSkill3 = repo.getInitialHeroCards().first { it.id == "vlasta" }.availableSkills[2]
@@ -4979,5 +4974,329 @@ class ExampleRobolectricTest {
         )
         bvmVlastaSelfHeal.executePlayerSkill()
         assertEquals("Kadru-marked Vlasta must recover 0 HP from Royal Wrath self-heal", 90, bvmVlastaSelfHeal.battleState.value!!.playerCards.first().currentHp)
+    }
+
+    @Test
+    fun `alisa grants 10 percent shield, witch has 50 percent chance to halve attack, and iva heals two allies for 20 percent`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val heroes = repo.getInitialHeroCards()
+
+        val alisaSkill = heroes.first { it.id == "alisa" }.availableSkills.first { it.id == "alisa_skill_1" }
+        val witchSkill = heroes.first { it.id == "witch" }.availableSkills.first { it.id == "witch_skill_1" }
+        val ivaSkill2 = heroes.first { it.id == "iva" }.availableSkills.first { it.id == "iva_skill_2" }
+
+        assertTrue(alisaSkill.description.contains("10%"))
+        assertTrue(witchSkill.description.contains("50%"))
+        assertTrue(ivaSkill2.description.contains("20%"))
+
+        // 1. Alice Bastion gives +10% maxHp shield to every alive ally (even with 0 initial armor)
+        val alice = BattleCard(
+            heroId = "alisa", name = "Алиса", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.SPECIAL, element = Element.STEEL, imageRes = R.drawable.hero_alisa,
+            slotIndex = 0, isPlayer = true, maxHp = 200, currentHp = 200,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 3, skill = alisaSkill
+        )
+        val ally = BattleCard(
+            heroId = "olga", name = "Ольга", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
+            slotIndex = 1, isPlayer = true, maxHp = 150, currentHp = 150,
+            maxArmor = 10, currentArmor = 0, atk = 20, level = 3
+        )
+        val enemy = BattleCard(
+            heroId = "e0", name = "E0", title = "", heroType = HeroType.MELEE,
+            rarity = CardRarity.BASIC, element = Element.STEEL, imageRes = R.drawable.hero_olga,
+            slotIndex = 0, isPlayer = false, maxHp = 200, currentHp = 200,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 3
+        )
+        val bvmAlice = BattleViewModel()
+        bvmAlice.startBattle(
+            playerCards = listOf(alice, ally),
+            enemyCards = listOf(enemy),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmAlice.executePlayerSkill()
+        val aliceTeam = bvmAlice.battleState.value!!.playerCards
+        assertEquals("Alice gets +10% maxHp shield (20)", 20, aliceTeam.first { it.slotIndex == 0 }.currentArmor)
+        assertEquals("Ally gets +10% maxHp shield (15)", 15, aliceTeam.first { it.slotIndex == 1 }.currentArmor)
+
+        // 2. Morgana Soul Drain deals 30% damage to back row and applies 50% ATK weaken only when roll < 50
+        fun makeWitch() = BattleCard(
+            heroId = "witch", name = "Моргана", title = "", heroType = HeroType.RANGED,
+            rarity = CardRarity.BASIC, element = Element.BLIGHT, imageRes = R.drawable.hero_witch,
+            slotIndex = 2, isPlayer = true, maxHp = 100, currentHp = 100,
+            maxArmor = 0, currentArmor = 0, atk = 40, level = 3, skill = witchSkill
+        )
+        fun makeBackEnemy(slot: Int) = BattleCard(
+            heroId = "b$slot", name = "B$slot", title = "", heroType = HeroType.RANGED,
+            rarity = CardRarity.BASIC, element = Element.MAGIC, imageRes = R.drawable.hero_berta,
+            slotIndex = slot, isPlayer = false, maxHp = 100, currentHp = 100,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 3
+        )
+
+        val bvmWitchProc = BattleViewModel().apply { witchWeakenRollOverride = 49 }
+        bvmWitchProc.startBattle(
+            playerCards = listOf(makeWitch()),
+            enemyCards = listOf(makeBackEnemy(2), makeBackEnemy(3)),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmWitchProc.executePlayerSkill()
+        bvmWitchProc.battleState.value!!.enemyCards.forEach { e ->
+            assertEquals("Soul Drain deals 30% of 40 = 12 damage", 88, e.currentHp)
+            assertTrue("Roll 49 (< 50) must halve enemy ATK", e.isWeakened)
+            assertEquals(1, e.weakenedRounds)
+        }
+
+        val bvmWitchMiss = BattleViewModel().apply { witchWeakenRollOverride = 50 }
+        bvmWitchMiss.startBattle(
+            playerCards = listOf(makeWitch()),
+            enemyCards = listOf(makeBackEnemy(2), makeBackEnemy(3)),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmWitchMiss.executePlayerSkill()
+        bvmWitchMiss.battleState.value!!.enemyCards.forEach { e ->
+            assertEquals("Soul Drain still deals 30% of 40 = 12 damage when weaken misses", 88, e.currentHp)
+            assertFalse("Roll 50 (>= 50) must NOT apply weaken", e.isWeakened)
+            assertEquals(0, e.weakenedRounds)
+        }
+
+        // 3. Iva Forest Balm heals two most wounded allies for 20% of their maxHp
+        val iva = BattleCard(
+            heroId = "iva", name = "Ива", title = "", heroType = HeroType.RANGED,
+            rarity = CardRarity.SPECIAL, element = Element.LIGHT, imageRes = R.drawable.hero_iva,
+            slotIndex = 2, isPlayer = true, maxHp = 100, currentHp = 100,
+            maxArmor = 0, currentArmor = 0, atk = 20, level = 5, skill = ivaSkill2
+        )
+        val wounded1 = ally.copy(slotIndex = 0, maxHp = 200, currentHp = 100)
+        val wounded2 = ally.copy(slotIndex = 1, maxHp = 150, currentHp = 75)
+        val bvmIva = BattleViewModel()
+        bvmIva.startBattle(
+            playerCards = listOf(wounded1, wounded2, iva),
+            enemyCards = listOf(enemy.copy()),
+            enemyName = "T", enemyTitle = "T", isArena = false,
+            rewardGold = 0, rewardGems = 0, rewardExp = 0, initialPlayerMana = 10,
+            onBattleEnd = { _, _ -> }
+        )
+        bvmIva.selectPlayerSlot(2)
+        bvmIva.executePlayerSkill()
+        val ivaTeam = bvmIva.battleState.value!!.playerCards
+        assertEquals("Ally 1 heals +20% maxHp (100 -> 140)", 140, ivaTeam.first { it.slotIndex == 0 }.currentHp)
+        assertEquals("Ally 2 heals +20% maxHp (75 -> 105)", 105, ivaTeam.first { it.slotIndex == 1 }.currentHp)
+    }
+
+    @Test
+    fun `v1_4_1 Mystery Casket drop bands, instant 0_5 percent unlock, and conditional visibility`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        try {
+            prefs.edit().clear().commit()
+            repo.savePlayerProfile(PlayerProfile(name = "MysteryTester", level = 10, gems = 10000, isTutorialCompleted = true))
+            val vm = GameViewModel(app)
+
+            // 1. Verify exact permille shard bands
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 104, targetSecretHeroId = "elios")
+            assertEquals("Band 5..104 (10%) must award 15 shards", 15, vm.chestOpeningResult.value!!.shardAmount)
+            vm.dismissChestOpening()
+
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 304, targetSecretHeroId = "elios")
+            assertTrue("Band 105..304 (20%) must award 9..14 shards", vm.chestOpeningResult.value!!.shardAmount in 9..14)
+            vm.dismissChestOpening()
+
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 604, targetSecretHeroId = "elios")
+            assertTrue("Band 305..604 (30%) must award 5..8 shards", vm.chestOpeningResult.value!!.shardAmount in 5..8)
+            vm.dismissChestOpening()
+
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 999, targetSecretHeroId = "elios")
+            assertTrue("Band 605..999 (39.5%) must award 2..4 shards", vm.chestOpeningResult.value!!.shardAmount in 2..4)
+            vm.dismissChestOpening()
+
+            // 2. Permille 4 (< 5 = 0.5%) instantly unlocks the secret heroine
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 4, targetSecretHeroId = "vasilisa")
+            assertTrue(vm.allHeroes.value.first { it.id == "vasilisa" }.isUnlocked)
+            assertEquals("vasilisa", vm.secretHeroUnlockedPopup.value?.id)
+            assertEquals("vasilisa", vm.chestOpeningResult.value?.heroId)
+            vm.dismissChestOpening()
+            vm.dismissSecretHeroUnlockedPopup()
+
+            // 3. Unlock remaining secrets -> hasLockedSecretHeroes becomes false
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 0, targetSecretHeroId = "elios")
+            vm.dismissChestOpening()
+            vm.dismissSecretHeroUnlockedPopup()
+            vm.openMysteryCasketWithRoll(outcomeRollPermille = 2, targetSecretHeroId = "kadru")
+            vm.dismissChestOpening()
+            vm.dismissSecretHeroUnlockedPopup()
+            assertFalse(vm.allHeroes.value.any { it.isSecret && !it.isUnlocked })
+
+            // Attempt opening Mystery Casket when none locked -> does not deduct gems
+            val gemsBeforeNoop = vm.playerProfile.value.gems
+            vm.openSummonChest(com.example.ui.screens.ChestType.MYSTERY)
+            assertEquals(gemsBeforeNoop, vm.playerProfile.value.gems)
+        } finally {
+            prefs.edit().clear().commit()
+            GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
+        }
+    }
+
+    @Test
+    fun `v1_4_1 artifact rarity separation across Basic, Rarity, and Artifact chests`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        try {
+            prefs.edit().clear().commit()
+            val allMaxed = repo.getInitialHeroCards().map {
+                it.copy(isUnlocked = true, level = it.maxUpgradeLevel(), shards = 0)
+            }
+            repo.saveHeroesState(allMaxed)
+            repo.savePlayerProfile(PlayerProfile(name = "ArtSep", level = 12, gold = 500000, gems = 50000, isTutorialCompleted = true))
+            val vm = GameViewModel(app)
+
+            // 1. Artifact Chest never drops Basic artifacts
+            repeat(30) {
+                vm.openSummonChest(com.example.ui.screens.ChestType.ARTIFACTS)
+                val art = vm.chestOpeningResult.value?.dropArtifact!!
+                assertTrue("Artifact chest must drop ONLY Special or Rare, got ${art.rarity}", art.rarity == CardRarity.SPECIAL || art.rarity == CardRarity.RARE)
+                vm.dismissChestOpening()
+            }
+
+            // 2. Rarity Chest never drops Basic artifacts
+            repeat(20) {
+                vm.openRarityChestWithSecretRoll(artifactRoll = 0)
+                val art = vm.chestOpeningResult.value?.dropArtifact!!
+                assertTrue("Rarity chest must drop ONLY Special or Rare artifacts, got ${art.rarity}", art.rarity == CardRarity.SPECIAL || art.rarity == CardRarity.RARE)
+                vm.dismissChestOpening()
+            }
+
+            // 3. Basic Chest drops ONLY Basic artifacts
+            repeat(15) {
+                vm.openSummonChest(com.example.ui.screens.ChestType.BASIC)
+                val art = vm.chestOpeningResult.value?.dropArtifact
+                if (art != null) {
+                    assertEquals("Basic chest must drop ONLY Basic artifacts", CardRarity.BASIC, art.rarity)
+                }
+                vm.dismissChestOpening()
+            }
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun `v1_4_1 career auto-battle outcomes (strong wins, weak loses), 2-hour cooldown, and save persistence`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        try {
+            prefs.edit().clear().commit()
+            val t0 = System.currentTimeMillis() + 120_000L
+            // Weak deck against high chapter boss (stage 406) -> immediate DEFEAT
+            val weakHeroes = repo.getInitialHeroCards()
+            repo.saveHeroesState(weakHeroes)
+            repo.savePlayerProfile(
+                PlayerProfile(
+                    name = "WeakAuto",
+                    level = 12,
+                    gold = 1000,
+                    gems = 100,
+                    maxSeenTimestamp = t0,
+                    isTutorialCompleted = true,
+                    activeDeckHeroIds = listOf("brunhilde", "olga", "berta", "witch")
+                )
+            )
+            repo.saveCampaignStars(mapOf(406 to 4, 101 to 4))
+            repo.saveCampaignClearCounts(mapOf(406 to 11, 101 to 5))
+
+            val vm = GameViewModel(app)
+            val stage101LowCount = vm.campaignChapters.value.flatMap { it.stages }.first { it.id == 101 }
+            assertFalse("Auto-battle blocked when clearCount <= 10", vm.startCampaignAutoBattle(stage101LowCount, nowMs = t0))
+
+            val stage406 = vm.campaignChapters.value.flatMap { it.stages }.first { it.id == 406 }
+            assertTrue(vm.startCampaignAutoBattle(stage406, nowMs = t0))
+            assertEquals("Weak deck must lose stage 406 in background auto-battle", BattlePhase.DEFEAT, vm.battleState.value?.phase)
+            assertEquals(1, vm.playerProfile.value.battlesLost)
+            assertEquals(CAREER_AUTO_BATTLE_COOLDOWN_MS, vm.getCareerAutoBattleCooldownRemainingMs(t0))
+            vm.exitBattle()
+
+            // Strong deck must win stage 101 in background auto-battle once cooldown elapses
+            val strongHeroes = repo.getInitialHeroCards().map {
+                if (it.id in listOf("brunhilde", "olga", "berta", "witch")) {
+                    it.copy(isUnlocked = true, level = 12, baseAtk = 150, baseHp = 500, baseArmor = 80)
+                } else it
+            }
+            repo.saveHeroesState(strongHeroes)
+            repo.saveCampaignClearCounts(mapOf(101 to 11))
+            val vmStrong = GameViewModel(app)
+            val st101 = vmStrong.campaignChapters.value.flatMap { it.stages }.first { it.id == 101 }
+
+            // Still blocked 1 second before 2 hours expire
+            val before2h = t0 + CAREER_AUTO_BATTLE_COOLDOWN_MS - 1000L
+            assertTrue(vmStrong.getCareerAutoBattleCooldownRemainingMs(before2h) > 0L)
+            assertFalse(vmStrong.startCampaignAutoBattle(st101, nowMs = before2h))
+
+            // Succeeds at t0 + 2 hours -> immediate VICTORY + rewards
+            val after2h = t0 + CAREER_AUTO_BATTLE_COOLDOWN_MS
+            assertEquals(0L, vmStrong.getCareerAutoBattleCooldownRemainingMs(after2h))
+            val goldBefore = vmStrong.playerProfile.value.gold
+            assertTrue(vmStrong.startCampaignAutoBattle(st101, nowMs = after2h))
+            assertEquals(BattlePhase.VICTORY, vmStrong.battleState.value?.phase)
+            assertTrue(vmStrong.playerProfile.value.gold > goldBefore)
+            assertEquals(12, repo.loadCampaignClearCounts()[101])
+            vmStrong.exitBattle()
+
+            // JSON export/import preserves lastCareerAutoBattleTimestamp
+            val exported = vmStrong.exportSaveToJson()
+            prefs.edit().clear().commit()
+            val vmRestored = GameViewModel(app)
+            assertTrue(vmRestored.importSaveFromJson(exported))
+            assertEquals(after2h, vmRestored.playerProfile.value.lastCareerAutoBattleTimestamp)
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun `v1_4_1 changelog, version json, and SummonScreen never mention secret names or reward percentages`() {
+        val secretNames = listOf("Эллиос", "Ellios", "Elios", "Василиса", "Vasilisa", "Кадру", "Kadru")
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        try {
+            prefs.edit().clear().commit()
+            val repo = GameDataRepository(app)
+            repo.savePlayerProfile(PlayerProfile(name = "Checker", level = 10, gems = 1000, isTutorialCompleted = true))
+            val vm = GameViewModel(app)
+
+            // Check version.json on disk if present in workspace test dir
+            val versionFile = java.io.File("apk-distribution/version.json").takeIf { it.exists() }
+                ?: java.io.File("../apk-distribution/version.json").takeIf { it.exists() }
+            versionFile?.let { file ->
+                val raw = file.readText()
+                secretNames.forEach { secret ->
+                    assertFalse("version.json must not mention $secret", raw.contains(secret, ignoreCase = true))
+                }
+                assertFalse("version.json must not contain %", raw.contains("%"))
+            }
+
+            // Check secret inspect hint in both RU and EN references Mystery Casket (not secret names/percentages)
+            listOf(AppLanguage.RU, AppLanguage.EN).forEach { lang ->
+                GameLocaleState.resetForTest(lang, chosen = true)
+                val lockedSecret = vm.allHeroes.value.first { it.isSecret && !it.isUnlocked }
+                vm.inspectHero(lockedSecret)
+                val toast = vm.latestDropMessage.value ?: ""
+                secretNames.forEach { secret ->
+                    assertFalse("Toast must not mention $secret", toast.contains(secret, ignoreCase = true))
+                }
+                assertFalse("Toast must not contain %", toast.contains("%"))
+            }
+        } finally {
+            prefs.edit().clear().commit()
+            GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
+        }
     }
 }
