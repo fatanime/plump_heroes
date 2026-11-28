@@ -144,7 +144,8 @@ data class HeroCard(
 ) {
     fun calculateTotalAtk(artifacts: List<Artifact>): Int {
         val artifactBonus = artifacts.filter { it.id in equippedArtifactIds }.sumOf { it.atkBonus }
-        val levelMultiplier = 1.0 + (level - 1) * 0.12
+        val perLevelRate = if (id == "mi_and_na") 0.12 * 1.15 else 0.12
+        val levelMultiplier = 1.0 + (level - 1) * perLevelRate
         return ((baseAtk * levelMultiplier).toInt() + artifactBonus).coerceAtLeast(1)
     }
 
@@ -315,7 +316,8 @@ fun resolveHeroImageNameForLevel(heroId: String, level: Int, fallbackName: Strin
             else -> "hero_kadru_3"
         }
         "leya" -> when (level) {
-            in 1..4 -> "hero_leya_0"
+            in 1..2 -> "hero_leya_0"
+            in 3..4 -> "hero_leya"
             in 5..7 -> "hero_leya_1"
             in 8..9 -> "hero_leya_2"
             in 10..11 -> "hero_leya_3"
@@ -417,6 +419,7 @@ fun resolveHeroDrawableByName(imageName: String, fallbackRes: Int): Int {
         "hero_kadru_2" -> com.example.R.drawable.hero_kadru_2
         "hero_kadru_3" -> com.example.R.drawable.hero_kadru_3
         "hero_leya_0" -> com.example.R.drawable.hero_leya_0
+        "hero_leya" -> com.example.R.drawable.hero_leya
         "hero_leya_1" -> com.example.R.drawable.hero_leya_1
         "hero_leya_2" -> com.example.R.drawable.hero_leya_2
         "hero_leya_3" -> com.example.R.drawable.hero_leya_3
@@ -484,7 +487,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
         "elios" -> com.example.R.drawable.hero_elios
         "vasilisa" -> com.example.R.drawable.hero_vasilisa
         "kadru" -> com.example.R.drawable.hero_kadru
-        "leya" -> com.example.R.drawable.hero_leya_0
+        "leya" -> com.example.R.drawable.hero_leya
         else -> com.example.R.drawable.app_logo
     }
 }

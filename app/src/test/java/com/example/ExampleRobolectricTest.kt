@@ -12,6 +12,7 @@ import com.example.viewmodel.BattleViewModel
 import com.example.viewmodel.GameViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -5161,7 +5162,8 @@ class ExampleRobolectricTest {
             vm.dismissChestOpening()
 
             vm.openMysteryCasketWithRoll(outcomeRollPermille = 999, targetSecretHeroId = "elios")
-            assertTrue("Band 605..999 (39.5%) must award 2..4 shards", vm.chestOpeningResult.value!!.shardAmount in 2..4)
+            assertTrue("Band 605..999 (39.5%) must award at least 5 shards", vm.chestOpeningResult.value!!.shardAmount >= 5)
+            assertEquals("Minimum Mystery Casket shard drop is 5", 5, vm.chestOpeningResult.value!!.shardAmount)
             vm.dismissChestOpening()
 
             // 2. Permille 4 (< 5 = 0.5%) instantly unlocks the secret heroine
@@ -5324,8 +5326,12 @@ class ExampleRobolectricTest {
                 ?: java.io.File("../apk-distribution/version.json").takeIf { it.exists() }
             versionFile?.let { file ->
                 val raw = file.readText()
-                assertTrue("version.json must target 1.5", raw.contains("\"versionName\": \"1.5\""))
-                assertTrue("version.json must target plump_heroes_1_5.apk", raw.contains("plump_heroes_1_5.apk"))
+                assertTrue("version.json must target 1.5.1", raw.contains("\"versionName\": \"1.5.1\""))
+                assertTrue("version.json must target plump_heroes_1_5_1.apk", raw.contains("plump_heroes_1_5_1.apk"))
+                assertTrue(
+                    "version.json must include exact v1.5.1 changelog",
+                    raw.contains("Исправление ошибок у новой девушки, новые мелодии и прочие небольшие доработки.")
+                )
                 secretNames.forEach { secret ->
                     assertFalse("version.json must not mention $secret", raw.contains(secret, ignoreCase = true))
                 }
@@ -5381,13 +5387,14 @@ class ExampleRobolectricTest {
             GameLocaleState.resetForTest(AppLanguage.RU, chosen = false)
         }
 
-        // 5 evolution art stages & gallery items
-        val portraitNames = listOf(1, 4, 5, 7, 8, 9, 10, 11, 12).map { lvl ->
+        // 6 evolution art stages & gallery items (_0, standard hero_leya at lv3-4, _1, _2, _3, _max)
+        val portraitNames = listOf(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12).map { lvl ->
             resolveHeroImageNameForLevel("leya", lvl)
         }
         assertEquals(
             listOf(
                 "hero_leya_0", "hero_leya_0",
+                "hero_leya", "hero_leya",
                 "hero_leya_1", "hero_leya_1",
                 "hero_leya_2", "hero_leya_2",
                 "hero_leya_3", "hero_leya_3",
@@ -5395,7 +5402,8 @@ class ExampleRobolectricTest {
             ),
             portraitNames
         )
-        assertEquals(5, getUnlockedHeroGalleryItems("leya", 12, R.drawable.hero_leya_max).size)
+        assertEquals(R.drawable.hero_leya, resolveHeroImageForLevel("leya", 3, R.drawable.hero_leya_0))
+        assertEquals(6, getUnlockedHeroGalleryItems("leya", 12, R.drawable.hero_leya_max).size)
 
         // Skills: Lv3 (2 mana) Усиленный корень, Lv5 (3 mana) Очищение
         assertEquals(2, leya.availableSkills.size)
@@ -5582,5 +5590,178 @@ class ExampleRobolectricTest {
             )
         }
         assertTrue("Leya must appear in Tower enemies", towerFloors.any { "leya" in it.enemyHeroIds })
+    }
+
+    @Test
+    fun `v1_5_1 Leya saved Lv3 portrait migration, stage 4-3 bg_leya, Mi and Na +15pct ATK growth cap, chest drops, level loot scaling, and music`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val repo = GameDataRepository(app)
+        val prefs = app.getSharedPreferences("plump_heroes_prefs", Context.MODE_PRIVATE)
+        com.example.audio.GameAudioManager.resetForTesting(muted = false)
+
+        try {
+            prefs.edit().clear().commit()
+
+            // 1. Saved Lv3 Leya (even with stale imageResName="hero_leya_0") loads R.drawable.hero_leya
+            val baseHeroes = repo.getInitialHeroCards().map { hero ->
+                if (hero.id == "leya") {
+                    hero.copy(level = 3, isUnlocked = true, baseAtk = hero.baseAtk + 4, baseHp = hero.baseHp + 12)
+                } else hero
+            }
+            repo.saveHeroesState(baseHeroes)
+            val reloadedLeya = repo.loadHeroesState(repo.getInitialHeroCards()).first { it.id == "leya" }
+            assertEquals(3, reloadedLeya.level)
+            assertEquals(R.drawable.hero_leya, reloadedLeya.imageRes)
+
+            // 2. Stage 4-3 uses bg_leya
+            val ch4Stages = repo.getCampaignChapters().first { it.id == 4 }.stages.associateBy { it.id }
+            assertEquals(R.drawable.bg_leya, ch4Stages[401]?.battleBgRes)
+            assertEquals(R.drawable.bg_leya, ch4Stages[403]?.battleBgRes)
+
+            // 3. Mi & Na +15% ATK per-level scaling stays <= all normal Ranged cards across Lv 1..12
+            val initialTemplates = repo.getInitialHeroCards()
+            val miNaTemplate = initialTemplates.first { it.id == "mi_and_na" }
+            val normalRangedTemplates = initialTemplates.filter { it.heroType == HeroType.RANGED }
+            for (lvl in 1..MAX_HERO_LEVEL) {
+                val miNaAtk = miNaTemplate.copy(
+                    level = lvl,
+                    baseAtk = miNaTemplate.baseAtk + (lvl - 1) * miNaTemplate.atkIncrementPerLevel()
+                ).calculateTotalAtk(emptyList())
+                val minNormalRangedAtk = normalRangedTemplates.minOf { r ->
+                    r.copy(
+                        level = lvl,
+                        baseAtk = r.baseAtk + (lvl - 1) * r.atkIncrementPerLevel()
+                    ).calculateTotalAtk(emptyList())
+                }
+                assertTrue(
+                    "At Lv $lvl, Mi & Na ATK ($miNaAtk) must be <= min normal Ranged ATK ($minNormalRangedAtk)",
+                    miNaAtk <= minNormalRangedAtk
+                )
+            }
+            val miNaLv12 = miNaTemplate.copy(level = 12, baseAtk = miNaTemplate.baseAtk + 11 * 2)
+            assertTrue("Mi & Na Lv12 ATK (${miNaLv12.calculateTotalAtk(emptyList())}) must exceed old 62", miNaLv12.calculateTotalAtk(emptyList()) > 62)
+
+            // 4. Basic chest +15% non-BASIC probability (35 BASIC / 65 non-BASIC) & Rarity chest +15% unlocked secret drop
+            prefs.edit().clear().commit()
+            repo.savePlayerProfile(PlayerProfile(name = "ChestTester", level = 12, gold = 50000, gems = 50000, isTutorialCompleted = true))
+            val vmChests = GameViewModel(app)
+            val basicDist = (0 until 100).groupingBy { vmChests.resolveBasicChestTargetRarity(it) }.eachCount()
+            assertEquals("Basic chest must roll BASIC 35% (down 15% from 50%)", 35, basicDist[CardRarity.BASIC])
+            assertEquals(
+                "Basic chest must roll non-BASIC 65% (up 15% from 50%)",
+                65,
+                (basicDist[CardRarity.SPECIAL] ?: 0) + (basicDist[CardRarity.RARE] ?: 0)
+            )
+
+            // Non-BASIC target rarity in Basic chest selects non-BASIC even when all non-BASICs are locked
+            for (roll in listOf(0, 20, 39, 60, 99)) {
+                val picked = vmChests.selectBasicChestShardHero(vmChests.allHeroes.value, CardRarity.SPECIAL, preferOwnedRoll = roll)
+                assertNotNull(picked)
+                assertNotEquals("Basic chest SPECIAL roll must not fall back to BASIC card", CardRarity.BASIC, picked!!.rarity)
+            }
+
+            // Unlock a secret hero (Elios) and verify Rarity Chest < 15 secret roll guarantees an unlocked secret drop
+            vmChests.openMysteryCasketWithRoll(outcomeRollPermille = 0, targetSecretHeroId = "elios")
+            vmChests.dismissChestOpening()
+            vmChests.dismissSecretHeroUnlockedPopup()
+            vmChests.openRarityChestWithSecretRoll(secretDropRoll = 14, artifactRoll = 99)
+            assertEquals("elios", vmChests.chestOpeningResult.value?.heroId)
+            vmChests.dismissChestOpening()
+
+            // 5. Player level > 10 (+25%) and >= 20 (+50%) reward scaling across Arena, Tower, and Coliseum
+            assertEquals(1.00, GameDataRepository.calculatePlayerLevelLootMultiplier(10), 0.0001)
+            assertEquals(1.25, GameDataRepository.calculatePlayerLevelLootMultiplier(11), 0.0001)
+            assertEquals(1.25, GameDataRepository.calculatePlayerLevelLootMultiplier(19), 0.0001)
+            assertEquals(1.50, GameDataRepository.calculatePlayerLevelLootMultiplier(20), 0.0001)
+
+            // Arena hard bot: 500/30/100 at Lv10 -> 625/38/125 at Lv11 -> 750/45/150 at Lv20
+            val arenaLv10 = repo.generateArenaOpponents(10, 1000).last { it.isHardChallenge }
+            val arenaLv11 = repo.generateArenaOpponents(11, 1000).last { it.isHardChallenge }
+            val arenaLv20 = repo.generateArenaOpponents(20, 1000).last { it.isHardChallenge }
+            assertEquals(500, arenaLv10.rewardGold)
+            assertEquals(625, arenaLv11.rewardGold)
+            assertEquals(750, arenaLv20.rewardGold)
+            assertEquals(45, arenaLv20.rewardGems)
+            assertEquals(150, arenaLv20.rewardExp)
+
+            // Coliseum: battle 1 = 100/10 -> 125/13 at Lv11 -> 150/15 at Lv20
+            assertEquals(100 to 10, repo.calculateColiseumRewards(1, playerLevel = 10))
+            assertEquals(125 to 13, repo.calculateColiseumRewards(1, playerLevel = 11))
+            assertEquals(150 to 15, repo.calculateColiseumRewards(1, playerLevel = 20))
+
+            // Tower Roof bonus shards & Floor 5 rewards scale by 1.25 (Lv11) and 1.50 (Lv20)
+            val towerLv11Floor5 = repo.getTowerFloorsForDay(TowerDayRule.THURSDAY_MANA_SURGE, playerLevel = 11, avgDeckLevel = 5).last()
+            val towerLv20Floor5 = repo.getTowerFloorsForDay(TowerDayRule.THURSDAY_MANA_SURGE, playerLevel = 20, avgDeckLevel = 5).last()
+            val towerLv20Roof = repo.getTowerRoofFloorForDay(TowerDayRule.THURSDAY_MANA_SURGE, playerLevel = 20, avgDeckLevel = 5)
+            assertEquals(13, towerLv11Floor5.bonusShards)
+            assertEquals(15, towerLv20Floor5.bonusShards)
+            assertEquals(30, towerLv20Roof.bonusShards)
+
+            // 6. Audio: Final Boss mode for Career 4-6 & Tower Roof + Menu 5-loop switch + 3 Battle Normal tracks
+            assertEquals(
+                com.example.audio.AudioTrackMode.BATTLE_FINAL_BOSS,
+                com.example.audio.resolveDesiredAudioMode(
+                    BattleState(phase = BattlePhase.PLAYER_TURN, campaignStageId = 406, isBoss = true)
+                )
+            )
+            assertEquals(
+                com.example.audio.AudioTrackMode.BATTLE_FINAL_BOSS,
+                com.example.audio.resolveDesiredAudioMode(
+                    BattleState(phase = BattlePhase.PLAYER_TURN, isTower = true, towerFloor = TOWER_ROOF_FLOOR, isBoss = true)
+                )
+            )
+            assertEquals(
+                com.example.audio.AudioTrackMode.BATTLE_BOSS,
+                com.example.audio.resolveDesiredAudioMode(
+                    BattleState(phase = BattlePhase.PLAYER_TURN, campaignStageId = 306, isBoss = true)
+                )
+            )
+            assertEquals(
+                com.example.audio.AudioTrackMode.SFX_VICTORY,
+                com.example.audio.resolveDesiredAudioMode(
+                    BattleState(phase = BattlePhase.VICTORY, campaignStageId = 406, isBoss = true)
+                )
+            )
+
+            val synth = com.example.audio.ChiptuneAudioSynthesizer(44100)
+            val menuLoopSec = com.example.audio.ChiptuneAudioSynthesizer.MENU_LOOP_SEC
+            for (loop in 0 until 5) {
+                assertEquals("Menu loops 0..4 must stay on Track 0", 0, synth.resolveMenuTrackVariant(loop * menuLoopSec + 1.0))
+            }
+            assertEquals("Menu loop 5 (after 5 consecutive plays) must switch to Track 1", 1, synth.resolveMenuTrackVariant(5 * menuLoopSec + 0.5))
+
+            val battleLoopSec = com.example.audio.ChiptuneAudioSynthesizer.BATTLE_NORMAL_LOOP_SEC
+            assertEquals(0, synth.resolveBattleNormalTrackVariant(0.5))
+            assertEquals(1, synth.resolveBattleNormalTrackVariant(battleLoopSec + 0.5))
+            assertEquals(2, synth.resolveBattleNormalTrackVariant(2 * battleLoopSec + 0.5))
+
+            // Render audio chunks for FINAL_BOSS, Menu Track 1B, and all 3 Battle Normal themes without clipping
+            val buf = ShortArray(2048)
+            val finalStartPeak = run {
+                synth.reset()
+                var peak = 0
+                repeat(120) { c ->
+                    synth.renderChunk(com.example.audio.AudioTrackMode.BATTLE_FINAL_BOSS, c * 2048L, buf)
+                    for (s in buf) peak = maxOf(peak, kotlin.math.abs(s.toInt()))
+                }
+                peak
+            }
+            assertTrue("Final boss theme must produce audible non-clipping audio (peak=$finalStartPeak)", finalStartPeak in 3001..32699)
+
+            val menuAltStartSample = ((5 * menuLoopSec + 1.0) * 44100.0).toLong()
+            val menuAltPeak = run {
+                synth.reset()
+                var peak = 0
+                repeat(120) { c ->
+                    synth.renderChunk(com.example.audio.AudioTrackMode.MENU_TAVERN, menuAltStartSample + c * 2048L, buf)
+                    for (s in buf) peak = maxOf(peak, kotlin.math.abs(s.toInt()))
+                }
+                peak
+            }
+            assertTrue("Menu alt theme (loop >= 5) must produce audible non-clipping audio (peak=$menuAltPeak)", menuAltPeak in 3001..32699)
+        } finally {
+            com.example.audio.GameAudioManager.resetForTesting(muted = false)
+            prefs.edit().clear().commit()
+        }
     }
 }

@@ -648,8 +648,8 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Добавлена новая героиня Лея со своими способностями, лесным фоном и появлением в Карьере, Арене, Колизее и Башне. Усилена базовая атака Ми и Ны с игнорированием щита. Также добавлены боевые диалоги и портреты лиц для новых героинь.",
-                                "Added a new heroine, Leya, with her skills, forest background, and appearances in Career, Arena, Coliseum, and Tower. Buffed Mi & Na's basic attack with shield bypass. Also added battle dialogues and dialogue face portraits for new heroines."
+                                "Исправление ошибок у новой девушки, новые мелодии и прочие небольшие доработки.",
+                                "Bug fixes for the new heroine, new music tracks, and other minor improvements."
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),

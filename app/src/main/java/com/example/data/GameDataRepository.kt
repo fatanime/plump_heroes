@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.example.R
 import com.example.model.*
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class GameDataRepository(context: Context) {
@@ -890,7 +891,7 @@ class GameDataRepository(context: Context) {
                         stars = 0, isUnlocked = false,
                         rewardGold = 1700, rewardGems = 80, rewardExp = 360,
                         rewardArtifactId = null,
-                        battleBgRes = R.drawable.bg_brunhilde
+                        battleBgRes = R.drawable.bg_leya
                     ),
                     CampaignStage(
                         id = 404, chapterId = 4, stageNumber = 4,
@@ -977,6 +978,7 @@ class GameDataRepository(context: Context) {
         )
 
         val baseLevel = playerLevel.coerceAtLeast(1)
+        val lootMult = calculatePlayerLevelLootMultiplier(baseLevel)
         val effectivePlayerAtk = if (playerDeckAtk > 0) playerDeckAtk else (baseLevel * 12 + 24)
         val effectivePlayerHp = if (playerDeckHp > 0) playerDeckHp else (baseLevel * 35 + 80)
 
@@ -996,6 +998,7 @@ class GameDataRepository(context: Context) {
             val chosenHeroId = teamIds.random()
             val botName = heroNameMap[chosenHeroId] ?: "Героиня"
             val botTitle = botTitles.random()
+            val scaledRegularGold = (((350 + (botRating / 3)) * 0.5f) * lootMult).roundToInt()
 
             ArenaBot(
                 name = botName,
@@ -1007,13 +1010,13 @@ class GameDataRepository(context: Context) {
                 targetTotalAtk = kotlin.math.ceil(effectivePlayerAtk * atkMultiplier).toInt(),
                 targetTotalHp = kotlin.math.ceil(effectivePlayerHp * hpMultiplier).toInt(),
                 isHardChallenge = false,
-                rewardGold = null,
-                rewardGems = 25,
-                rewardExp = 60
+                rewardGold = scaledRegularGold,
+                rewardGems = (25 * lootMult).roundToInt(),
+                rewardExp = (60 * lootMult).roundToInt()
             )
         }
 
-        // Additional Hard Challenger Bot: +5% ATK/HP over previous (+41.75% ATK, +20.75% HP), elevated rewards (500 coins, 30 gems, 100 EXP)
+        // Additional Hard Challenger Bot: +5% ATK/HP over previous (+41.75% ATK, +20.75% HP), elevated rewards (500 coins, 30 gems, 100 EXP base)
         val hardFrontTeam = frontRowCandidates.shuffled().take(2)
         val hardBackTeam = backRowCandidates.shuffled().take(2)
         val hardTeamIds = hardFrontTeam + hardBackTeam
@@ -1029,15 +1032,15 @@ class GameDataRepository(context: Context) {
             targetTotalAtk = kotlin.math.ceil(effectivePlayerAtk * 1.35 * 1.05).toInt(),
             targetTotalHp = kotlin.math.ceil(effectivePlayerHp * 1.15 * 1.05).toInt(),
             isHardChallenge = true,
-            rewardGold = 500,
-            rewardGems = 30,
-            rewardExp = 100
+            rewardGold = (500 * lootMult).roundToInt(),
+            rewardGems = (30 * lootMult).roundToInt(),
+            rewardExp = (100 * lootMult).roundToInt()
         )
 
         return regularBots + hardBot
     }
 
-    fun calculateColiseumRewards(battleNumber: Int): Pair<Int, Int> {
+    fun calculateColiseumRewards(battleNumber: Int, playerLevel: Int = 1): Pair<Int, Int> {
         val n = battleNumber.coerceAtLeast(1)
         val coins = when (n) {
             1 -> 100
@@ -1062,7 +1065,8 @@ class GameDataRepository(context: Context) {
             6 -> 100
             else -> 100 + (n - 6) * 20
         }
-        return coins to gems
+        val lootMult = calculatePlayerLevelLootMultiplier(playerLevel)
+        return (coins * lootMult).roundToInt() to (gems * lootMult).roundToInt()
     }
 
     fun calculateColiseumScalingMultiplier(battleNumber: Int): Double {
@@ -1082,7 +1086,8 @@ class GameDataRepository(context: Context) {
         playerDeckHp: Int,
         avgHeroLevel: Int,
         unlockedSecretHeroIds: Set<String> = emptySet(),
-        secretSpawnRoll: Int = Random.nextInt(100)
+        secretSpawnRoll: Int = Random.nextInt(100),
+        playerLevel: Int = 1
     ): ArenaBot {
         val frontRowCandidates = listOf("brunhilde", "olga", "vlasta", "alisa", "evanda", "demoness", "baker", "mi_and_na", "leya")
         val backRowCandidates = listOf("berta", "witch", "isolda", "iva", "demoness", "baker", "mi_and_na", "leya")
@@ -1131,7 +1136,7 @@ class GameDataRepository(context: Context) {
         val mult = calculateColiseumScalingMultiplier(battleNumber)
         val targetAtk = kotlin.math.ceil(effectivePlayerAtk * mult).toInt().coerceAtLeast(4)
         val targetHp = kotlin.math.ceil(effectivePlayerHp * mult).toInt().coerceAtLeast(4)
-        val (rewardCoins, rewardGems) = calculateColiseumRewards(battleNumber)
+        val (rewardCoins, rewardGems) = calculateColiseumRewards(battleNumber, playerLevel)
 
         val chosenHeroId = teamIds.random()
         val botName = heroNameMap[chosenHeroId] ?: "Героиня"
@@ -1248,6 +1253,8 @@ class GameDataRepository(context: Context) {
             "Lower Sanctum", "Rune Hall", "Middle Bastion", "Storm Chambers", "Spire Summit"
         )
 
+        val lootMult = calculatePlayerLevelLootMultiplier(playerLevel)
+
         return (1..TOWER_TOTAL_FLOORS).map { floor ->
             val levelOffset = floor - 2
             val baseEnemyLvl = (effectiveBaseLevel + levelOffset).coerceIn(1, MAX_HERO_LEVEL)
@@ -1260,11 +1267,13 @@ class GameDataRepository(context: Context) {
                 (baseEnemyLvl + (if (isBossFloor) 1 else 0)).coerceAtMost(MAX_HERO_LEVEL)
             )
             val rawGold = 180 + floor * 70 + playerLevel * 12
-            val rewardGold = if (rule == TowerDayRule.SUNDAY_GOLDEN_ASSAULT) rawGold * 2 else rawGold
+            val scaledBaseGold = (rawGold * lootMult).roundToInt()
+            val rewardGold = if (rule == TowerDayRule.SUNDAY_GOLDEN_ASSAULT) scaledBaseGold * 2 else scaledBaseGold
             val rawGems = 12 + floor * 6
-            val rewardGems = if (rule == TowerDayRule.SATURDAY_BOSS_SIEGE) rawGems + 10 else rawGems
-            val rewardExp = 45 + floor * 20
-            val bonusShards = if (floor == TOWER_TOTAL_FLOORS) 10 else 0
+            val baseRuleGems = if (rule == TowerDayRule.SATURDAY_BOSS_SIEGE) rawGems + 10 else rawGems
+            val rewardGems = (baseRuleGems * lootMult).roundToInt()
+            val rewardExp = ((45 + floor * 20) * lootMult).roundToInt()
+            val bonusShards = if (floor == TOWER_TOTAL_FLOORS) (10 * lootMult).roundToInt() else 0
 
             TowerFloorPreview(
                 floor = floor,
@@ -1301,6 +1310,7 @@ class GameDataRepository(context: Context) {
         val effectiveBaseLevel = maxOf(avgDeckLevel, ((playerLevel + 1) / 2).coerceAtLeast(1)).coerceIn(1, MAX_HERO_LEVEL)
         val roofLevel = (effectiveBaseLevel + 3).coerceIn(1, MAX_HERO_LEVEL)
         val enemyIds = buildRuleCompliantTowerTeam(rule, TOWER_ROOF_FLOOR, baseTemplates, activeWedElement)
+        val minRoofShards = (20 * calculatePlayerLevelLootMultiplier(playerLevel)).roundToInt()
 
         return TowerFloorPreview(
             floor = TOWER_ROOF_FLOOR,
@@ -1311,7 +1321,7 @@ class GameDataRepository(context: Context) {
             rewardGold = floor5.rewardGold * 2,
             rewardGems = floor5.rewardGems * 2,
             rewardExp = floor5.rewardExp * 2,
-            bonusShards = (floor5.bonusShards * 2).coerceAtLeast(20),
+            bonusShards = (floor5.bonusShards * 2).coerceAtLeast(minRoofShards),
             isBoss = true
         )
     }
@@ -2115,6 +2125,12 @@ data class SaveImportResult(
     }
 
     companion object {
+        fun calculatePlayerLevelLootMultiplier(playerLevel: Int): Double = when {
+            playerLevel >= 20 -> 1.50
+            playerLevel > 10 -> 1.25
+            else -> 1.0
+        }
+
         fun getStageTargetAtk(stageId: Int): Int = when (stageId) {
             101 -> 40
             102 -> 43

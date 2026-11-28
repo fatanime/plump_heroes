@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
@@ -810,6 +811,37 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         reconcileInfeasibleUncompletedQuests()
     }
 
+    internal fun resolveBasicChestTargetRarity(roll: Int): CardRarity = when {
+        roll < 35 -> CardRarity.BASIC
+        roll < 68 -> CardRarity.SPECIAL
+        else -> CardRarity.RARE
+    }
+
+    internal fun selectBasicChestShardHero(
+        eligibleHeroes: List<HeroCard>,
+        targetRarity: CardRarity,
+        preferOwnedRoll: Int = Random.nextInt(100)
+    ): HeroCard? {
+        if (eligibleHeroes.isEmpty()) return null
+        val nonBasicEligible = eligibleHeroes.filter { it.effectiveDropRarity() != CardRarity.BASIC }
+        val poolForRarity = if (targetRarity != CardRarity.BASIC && nonBasicEligible.isNotEmpty()) {
+            nonBasicEligible
+        } else {
+            eligibleHeroes
+        }
+        val ownedEligible = poolForRarity.filter { it.isUnlocked }
+        val lockedEligible = poolForRarity.filter { !it.isUnlocked }
+        val preferencePool = if (ownedEligible.isNotEmpty() && lockedEligible.isNotEmpty()) {
+            if (preferOwnedRoll < 40) ownedEligible else lockedEligible
+        } else {
+            poolForRarity
+        }
+        val candidates = preferencePool.filter { it.effectiveDropRarity() == targetRarity }
+            .ifEmpty { poolForRarity.filter { it.effectiveDropRarity() == targetRarity } }
+            .ifEmpty { preferencePool }
+        return candidates.randomOrNull()
+    }
+
     internal fun selectChestShardHero(
         eligibleHeroes: List<HeroCard>,
         targetRarity: CardRarity,
@@ -840,15 +872,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 triggerHaptic(true)
                 _playerProfile.update { it.copy(gold = it.gold - 500) }
 
-                val roll = Random.nextInt(100)
-                val targetRarity = when {
-                    roll < 50 -> CardRarity.BASIC
-                    roll < 75 -> CardRarity.SPECIAL
-                    roll < 90 -> CardRarity.RARE
-                    else -> CardRarity.MYTHIC
-                }
+                val targetRarity = resolveBasicChestTargetRarity(Random.nextInt(100))
                 val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
-                val hero = selectChestShardHero(eligibleHeroes, targetRarity)
+                val hero = selectBasicChestShardHero(eligibleHeroes, targetRarity)
                 val shardAmount = if (hero != null) {
                     resolveBasicChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
                 } else 0
@@ -1004,9 +1030,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         triggerHaptic(true)
         _playerProfile.update { it.copy(gems = it.gems - 100) }
 
-        val targetRarity = resolveRarityChestTargetRarity(Random.nextInt(100))
         val eligibleHeroes = _allHeroes.value.filter { (!it.isSecret || it.isUnlocked) && it.level < it.maxUpgradeLevel() }
-        val hero = selectChestShardHero(eligibleHeroes, targetRarity)
+        val unlockedSecretEligible = eligibleHeroes.filter { it.isSecret && it.isUnlocked }
+        val effectiveSecretRoll = secretDropRoll ?: (secretDropRollPermille / 10)
+        val hero = if (unlockedSecretEligible.isNotEmpty() && effectiveSecretRoll < 15) {
+            unlockedSecretEligible.random()
+        } else {
+            val targetRarity = resolveRarityChestTargetRarity(Random.nextInt(100))
+            selectChestShardHero(eligibleHeroes, targetRarity)
+        }
         val shardAmount = if (hero != null) {
             resolveRarityChestShardRange(_allHeroes.value, hero.effectiveDropRarity()).random()
         } else 0
@@ -1142,7 +1174,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 permille < 105 -> 15                  // 10% (5..104)
                 permille < 305 -> Random.nextInt(9, 15) // 20% (105..304)
                 permille < 605 -> Random.nextInt(5, 9)  // 30% (305..604)
-                else -> Random.nextInt(2, 5)            // 39.5% (605..999)
+                else -> 5                               // 39.5% (605..999) - min 5 shards
             }
             _allHeroes.update { list ->
                 list.map {
@@ -2238,7 +2270,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val arenaBg = ARENA_BATTLE_BACKGROUNDS.random()
-        val actualRewardGold = bot.rewardGold ?: ((350 + (bot.rating / 3)) * 0.5f).toInt()
+        val arenaLootMult = GameDataRepository.calculatePlayerLevelLootMultiplier(profile.level)
+        val actualRewardGold = bot.rewardGold ?: (((350 + (bot.rating / 3)) * 0.5f) * arenaLootMult).roundToInt()
 
         battleViewModel.startBattle(
             playerCards = playerBattleCards,
@@ -2418,7 +2451,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val rewardedHero = selectChestShardHero(eligibleHeroes, CardRarity.RARE)
                         ?: eligibleHeroes.randomOrNull()
                     if (rewardedHero != null) {
-                        val bonusShards = 20
+                        val bonusShards = (20 * GameDataRepository.calculatePlayerLevelLootMultiplier(oldLevel)).roundToInt()
                         _allHeroes.update { list ->
                             list.map { if (it.id == rewardedHero.id) it.copy(shards = it.shards + bonusShards) else it }
                         }
@@ -2457,7 +2490,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val rewardedHero = selectChestShardHero(eligibleHeroes, CardRarity.RARE)
                         ?: eligibleHeroes.randomOrNull()
                     if (rewardedHero != null) {
-                        val bonusShards = 10
+                        val bonusShards = (10 * GameDataRepository.calculatePlayerLevelLootMultiplier(oldLevel)).roundToInt()
                         _allHeroes.update { list ->
                             list.map { if (it.id == rewardedHero.id) it.copy(shards = it.shards + bonusShards) else it }
                         }
@@ -2818,19 +2851,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             .filter { it.isSecret && it.isUnlocked }
             .map { it.id }
             .toSet()
+        val playerLevel = _playerProfile.value.level
         val bot = repository.generateColiseumOpponent(
             battleNumber = battleNumber,
             playerDeckAtk = initialDeckAtk,
             playerDeckHp = initialDeckHp,
             avgHeroLevel = avgDeckLevel,
-            unlockedSecretHeroIds = unlockedSecretHeroIds
+            unlockedSecretHeroIds = unlockedSecretHeroIds,
+            playerLevel = playerLevel
         )
         val localizedOpponentName = localizeHeroNameByIdOrRu(null, bot.name)
         _coliseumBattlePreview.value = ColiseumBattlePreview(
             battleNumber = battleNumber,
             opponentName = localizedOpponentName,
             opponentBot = bot,
-            rewardGold = bot.rewardGold ?: repository.calculateColiseumRewards(battleNumber).first,
+            rewardGold = bot.rewardGold ?: repository.calculateColiseumRewards(battleNumber, playerLevel).first,
             rewardGems = bot.rewardGems
         )
         // All Coliseum waves (including Battle 1) open directly on the unified Transition Screen without a popup overlay.

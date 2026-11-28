@@ -1,7 +1,7 @@
 {
-  "versionCode": 35,
-  "versionName": "1.5",
-  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1_5.apk",
-  "changelogRu": "Добавлена новая героиня Лея со своими способностями, лесным фоном и появлением в Карьере, Арене, Колизее и Башне. Усилена базовая атака Ми и Ны с игнорированием щита. Также добавлены боевые диалоги и портреты лиц для новых героинь.",
-  "changelogEn": "Added a new heroine, Leya, with her skills, forest background, and appearances in Career, Arena, Coliseum, and Tower. Buffed Mi & Na's basic attack with shield bypass. Also added battle dialogues and dialogue face portraits for new heroines."
+  "versionCode": 36,
+  "versionName": "1.5.1",
+  "apkUrl": "https://raw.githubusercontent.com/fatanime/plump_heroes/main/apk-distribution/plump_heroes_1_5_1.apk",
+  "changelogRu": "Исправление ошибок у новой девушки, новые мелодии и прочие небольшие доработки.",
+  "changelogEn": "Bug fixes for the new heroine, new music tracks, and other minor improvements."
 }
