@@ -96,6 +96,7 @@ fun BattleCardWidget(
     val frameColor = getCardFrameColor(card.level)
     val borderStroke = when {
         isTargetHit || isDotHit -> BorderStroke(3.dp, Color(0xFFFF5252))
+        isValidTarget && card.isPlayer -> BorderStroke(3.dp, Color(0xFF66BB6A))
         isSelectedAttacker -> BorderStroke(3.dp, GameGold)
         isValidTarget -> BorderStroke(3.dp, Color(0xFFFF1744))
         !card.isAlive -> BorderStroke(1.dp, Color(0x44444444))
@@ -111,7 +112,7 @@ fun BattleCardWidget(
             .offset(x = shakeOffsetX, y = lungeOffsetY)
             .size(width = 92.dp, height = 122.dp)
             .scale(if (isValidTarget) pulseScale else if (isAttacker) 1.08f else 1f)
-            .clickable(enabled = card.isAlive && (!card.isPlayer || !card.hasSkipTurnEffect), onClick = onClick),
+            .clickable(enabled = card.isAlive && (!card.isPlayer || !card.hasSkipTurnEffect || isValidTarget), onClick = onClick),
         contentAlignment = Alignment.TopCenter
     ) {
         // Main Card Body

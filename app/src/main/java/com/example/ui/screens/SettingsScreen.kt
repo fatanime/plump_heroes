@@ -648,8 +648,8 @@ fun SettingsScreen(
 
                         Text(
                             text = tr(
-                                "Увеличена награда за повторное прохождение этапов Карьеры, добавлен Автобой для часто пройденных уровней, появилась новая Шкатулка редкостей и обновлён баланс сундуков.",
-                                "Increased repeat clear rewards in Career, added Auto-Battle for repeatedly cleared stages, introduced the new Mystery Casket, and rebalanced chest drops."
+                                "Добавлена новая героиня Лея со своими способностями, лесным фоном и появлением в Карьере, Арене, Колизее и Башне. Усилена базовая атака Ми и Ны с игнорированием щита. Также добавлены боевые диалоги и портреты лиц для новых героинь.",
+                                "Added a new heroine, Leya, with her skills, forest background, and appearances in Career, Arena, Coliseum, and Tower. Buffed Mi & Na's basic attack with shield bypass. Also added battle dialogues and dialogue face portraits for new heroines."
                             ),
                             fontSize = 11.sp,
                             color = Color(0xFFDDD2F0),

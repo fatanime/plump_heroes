@@ -197,7 +197,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             com.example.R.drawable.bg_griselda,
             com.example.R.drawable.bg_lilith,
             com.example.R.drawable.bg_isolda,
-            com.example.R.drawable.bg_alisa
+            com.example.R.drawable.bg_alisa,
+            com.example.R.drawable.bg_leya
         )
     }
 

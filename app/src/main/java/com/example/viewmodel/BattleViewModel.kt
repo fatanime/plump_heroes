@@ -73,7 +73,7 @@ class BattleViewModel : ViewModel() {
 
         val isPlayerFirst = if (isArena && !isColiseum && !isTower) Random.nextBoolean() else true
         val startPhase = if (isPlayerFirst) BattlePhase.PLAYER_TURN else BattlePhase.ENEMY_TURN
-        val startSpeaker = playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
+        val startSpeaker = playerCards.filter { it.isAlive }.randomOrNull()
         val startQuote = startSpeaker?.let { pickHeroBattleQuote(it, QuoteContext.BATTLE_START) }
         val initialLogs = if (startQuote != null) {
             listOf(
@@ -170,6 +170,7 @@ class BattleViewModel : ViewModel() {
                 card.poisonRounds = (card.poisonRounds - 1).coerceAtLeast(0)
                 if (card.poisonRounds == 0) {
                     card.poisonFixedDamage = 0
+                    card.hasKadruPoison = false
                 }
                 tookDot = true
                 texts.add(
@@ -284,15 +285,71 @@ class BattleViewModel : ViewModel() {
         }
     }
 
+    internal fun skillRequiresAllyTarget(skillId: String): Boolean =
+        skillId == "leya_skill_1" || skillId == "leya_skill_2"
+
+    internal fun hasCleansableNegativeEffect(card: BattleCard): Boolean {
+        return card.isFrozen ||
+            card.isStunned ||
+            card.isBlinded ||
+            card.isCharmed ||
+            card.isWeakened ||
+            card.isSlowed ||
+            card.burnRounds > 0 ||
+            (card.poisonRounds > 0 && !card.hasKadruPoison)
+    }
+
+    private fun findBestAutoAllyTarget(caster: BattleCard, allies: List<BattleCard>, skillId: String): BattleCard? {
+        val otherAliveAllies = allies.filter { it.isAlive && it.slotIndex != caster.slotIndex }
+        if (otherAliveAllies.isEmpty()) return null
+        return when (skillId) {
+            "leya_skill_1" -> otherAliveAllies.maxByOrNull { it.atk }
+            "leya_skill_2" -> otherAliveAllies
+                .filter { hasCleansableNegativeEffect(it) }
+                .maxByOrNull { ally ->
+                    val skipTurnWeight = if (ally.hasSkipTurnEffect) 100 else 0
+                    val dotWeight = if (ally.burnRounds > 0 || (ally.poisonRounds > 0 && !ally.hasKadruPoison)) 30 else 0
+                    val debuffWeight = if (ally.isWeakened || ally.isSlowed) 10 else 0
+                    skipTurnWeight + dotWeight + debuffWeight + ally.atk
+                }
+            else -> null
+        }
+    }
+
+    private fun selectAutoSkillForCard(card: BattleCard, allies: List<BattleCard>, teamMana: Int): HeroSkill? {
+        if (!card.hasMagicUnlocked) return null
+        val candidateSkills = if (card.availableSkills.isNotEmpty()) card.availableSkills else listOfNotNull(card.skill)
+        return candidateSkills
+            .filter { skill ->
+                teamMana >= skill.energyCost &&
+                    (!skillRequiresAllyTarget(skill.id) || findBestAutoAllyTarget(card, allies, skill.id) != null)
+            }
+            .maxByOrNull { it.energyCost }
+    }
+
     /**
-     * Selects an active player hero slot for acting this turn.
+     * Selects an active player hero slot for acting this turn, or applies a pending ally-targeted skill.
      */
     fun selectPlayerSlot(slotIndex: Int) {
         val current = _battleState.value ?: return
         if (current.isProcessingRoundEffects || current.phase != BattlePhase.PLAYER_TURN) return
+
+        val pendingSlot = current.pendingSkillSlot
+        if (pendingSlot != null) {
+            if (slotIndex == pendingSlot) {
+                _battleState.update { it?.copy(pendingSkillSlot = null) }
+                return
+            }
+            val allyTarget = current.playerCards.firstOrNull { it.slotIndex == slotIndex && it.isAlive }
+            if (allyTarget != null) {
+                executePlayerSkill(targetAllySlot = slotIndex)
+            }
+            return
+        }
+
         val card = current.playerCards.firstOrNull { it.slotIndex == slotIndex }
         if (card != null && card.isAlive && !card.hasActedThisRound && !card.hasSkipTurnEffect) {
-            _battleState.update { it?.copy(selectedPlayerSlot = slotIndex) }
+            _battleState.update { it?.copy(selectedPlayerSlot = slotIndex, pendingSkillSlot = null) }
             hapticTrigger?.invoke(false)
         }
     }
@@ -337,13 +394,15 @@ class BattleViewModel : ViewModel() {
 
         if (!canCardTargetSlot(attacker, targetSlotIndex, state.enemyCards)) return
 
+        _battleState.update { it?.copy(pendingSkillSlot = null) }
         performAttackWithPattern(attacker, targetSlotIndex, isPlayerAttacker = true)
     }
 
     /**
      * Executes player special skill when magic is unlocked (level >= 3) and team energy is sufficient.
+     * Ally-targeted skills enter target-selection mode unless targetAllySlot or auto-battle provides a target.
      */
-    fun executePlayerSkill() {
+    fun executePlayerSkill(targetAllySlot: Int? = null) {
         val state = _battleState.value ?: return
         if (state.phase != BattlePhase.PLAYER_TURN || state.isProcessingRoundEffects) return
         val selectedSlot = state.selectedPlayerSlot ?: return
@@ -351,9 +410,48 @@ class BattleViewModel : ViewModel() {
             it.slotIndex == selectedSlot && it.isAlive && !it.hasActedThisRound && !it.hasSkipTurnEffect
         } ?: return
 
-        if (!attacker.hasMagicUnlocked || attacker.skill == null) return
-        if (state.playerTeamMana < attacker.skill.energyCost) return
+        val activeSkill = attacker.skill ?: return
+        if (!attacker.hasMagicUnlocked) return
+        if (state.playerTeamMana < activeSkill.energyCost) return
 
+        if (skillRequiresAllyTarget(activeSkill.id)) {
+            if (targetAllySlot != null) {
+                val validAlly = state.playerCards.firstOrNull {
+                    it.slotIndex == targetAllySlot && it.isAlive && it.slotIndex != attacker.slotIndex
+                } ?: return
+                _battleState.update { it?.copy(pendingSkillSlot = null) }
+                performSkill(attacker, isPlayerAttacker = true, targetAllySlot = validAlly.slotIndex)
+                return
+            }
+            if (state.isAutoBattle) {
+                val chosenAlly = findBestAutoAllyTarget(attacker, state.playerCards, activeSkill.id) ?: return
+                performSkill(attacker, isPlayerAttacker = true, targetAllySlot = chosenAlly.slotIndex)
+                return
+            }
+            val hasOtherAliveAlly = state.playerCards.any { it.isAlive && it.slotIndex != attacker.slotIndex }
+            if (!hasOtherAliveAlly) {
+                _battleState.update {
+                    it?.copy(
+                        pendingSkillSlot = null,
+                        actionLogs = it.actionLogs + BattleActionLog(
+                            System.nanoTime(),
+                            tr("Нет другой живой союзницы для применения навыка!", "No other alive ally to target with this skill!"),
+                            true
+                        )
+                    )
+                }
+                return
+            }
+            _battleState.update {
+                it?.copy(
+                    pendingSkillSlot = if (it.pendingSkillSlot == attacker.slotIndex) null else attacker.slotIndex
+                )
+            }
+            hapticTrigger?.invoke(false)
+            return
+        }
+
+        _battleState.update { it?.copy(pendingSkillSlot = null) }
         performSkill(attacker, isPlayerAttacker = true)
     }
 
@@ -378,7 +476,7 @@ class BattleViewModel : ViewModel() {
             AttackPattern.SINGLE -> {
                 targetsToHit.add(primaryTarget)
             }
-            AttackPattern.PIERCE_LINE -> {
+            AttackPattern.PIERCE_LINE, AttackPattern.PIERCE_25_75 -> {
                 // Column 0: slots 0 and 2; Column 1: slots 1 and 3
                 val col = if (primaryTargetSlot == 0 || primaryTargetSlot == 2) listOf(0, 2) else listOf(1, 3)
                 col.forEach { slot ->
@@ -446,11 +544,12 @@ class BattleViewModel : ViewModel() {
                 AttackPattern.ALL_ENEMIES -> when {
                     aliveTargetCount <= 1 -> 1.0
                     aliveTargetCount == 2 -> 0.50
-                    aliveTargetCount == 3 -> 0.33
-                    else -> 0.25
+                    aliveTargetCount == 3 -> 0.40
+                    else -> 0.35
                 }
                 else -> 1.0
             }
+            val ignoresShield = attacker.attackPattern == AttackPattern.ALL_ENEMIES
 
             for (target in targetsToHit) {
                 if (!target.isAlive) continue
@@ -458,13 +557,18 @@ class BattleViewModel : ViewModel() {
                 val atkStat = if (attacker.isWeakened) (boostedAtk * 0.50).toInt().coerceAtLeast(1) else boostedAtk
                 val targetMultiplier = when (attacker.attackPattern) {
                     AttackPattern.FRONT_50_BACK_25 -> if (target.isFrontRow) 0.50 else 0.25
+                    AttackPattern.PIERCE_25_75 -> when {
+                        aliveTargetCount <= 1 -> 1.0
+                        target.isFrontRow -> 0.25
+                        else -> 0.75
+                    }
                     else -> patternMultiplier
                 }
                 val rawDamage = (atkStat * targetMultiplier * if (isCrit) 1.5 else 1.0).toInt().coerceAtLeast(1)
                 var remainingDmg = rawDamage
 
-                // Health tracking: Armor/Shield absorbs damage first
-                if (target.currentArmor > 0) {
+                // Health tracking: Armor/Shield absorbs damage first unless basic attack ignores shield
+                if (!ignoresShield && target.currentArmor > 0) {
                     val blocked = target.currentArmor.coerceAtMost(remainingDmg)
                     target.currentArmor -= blocked
                     remainingDmg -= blocked
@@ -503,6 +607,7 @@ class BattleViewModel : ViewModel() {
                     target.poisonRounds = maxOf(target.poisonRounds, 1)
                     target.poisonAppliedRound = state.round
                     target.isHealingBlocked = true
+                    target.hasKadruPoison = true
                     newCombatTexts.add(
                         FloatingCombatText(
                             id = System.nanoTime() + 45 + target.slotIndex,
@@ -531,6 +636,7 @@ class BattleViewModel : ViewModel() {
 
         val patternDesc = when (attacker.attackPattern) {
             AttackPattern.PIERCE_LINE -> tr("пронзанием линии", "line pierce")
+            AttackPattern.PIERCE_25_75 -> tr("пронзанием корнями", "root pierce")
             AttackPattern.ALL_ENEMIES -> tr("залпом по врагам", "multi-target blast")
             AttackPattern.DIAGONAL_PAIR -> tr("ударом по диагонали", "diagonal strike")
             AttackPattern.FRONT_50_BACK_25 -> tr("волной льда", "ice wave")
@@ -584,6 +690,7 @@ class BattleViewModel : ViewModel() {
                 combatTexts = newCombatTexts,
                 actionLogs = updatedLogs,
                 selectedPlayerSlot = nextPlayerSlot,
+                pendingSkillSlot = null,
                 playerTeamMana = newPlayerMana,
                 enemyTeamMana = newEnemyMana
             )
@@ -603,7 +710,8 @@ class BattleViewModel : ViewModel() {
         attacker: BattleCard,
         isPlayerAttacker: Boolean,
         skillOverride: HeroSkill? = null,
-        silentInstant: Boolean = false
+        silentInstant: Boolean = false,
+        targetAllySlot: Int? = null
     ) {
         val state = _battleState.value ?: return
         val skill = skillOverride ?: attacker.skill ?: return
@@ -1076,12 +1184,76 @@ class BattleViewModel : ViewModel() {
                     target.poisonAppliedRound = state.round
                     target.poisonFixedDamage = poisonDmg
                     target.isHealingBlocked = true
+                    target.hasKadruPoison = true
                     newCombatTexts.add(
                         FloatingCombatText(
                             id = System.nanoTime() + target.slotIndex + 40,
                             slotIndex = target.slotIndex,
                             isPlayer = target.isPlayer,
                             text = tr("💜 Яд -$poisonDmg", "💜 Poison -$poisonDmg"),
+                            type = CombatTextType.SKILL
+                        )
+                    )
+                }
+            }
+            "leya_skill_1" -> {
+                // Усиленный корень: Повышает атаку выбранного союзника (кроме себя) на 25% на следующий ход
+                val targetAlly = targetAllySlot?.let { slot ->
+                    allies.firstOrNull { it.slotIndex == slot && it.slotIndex != attacker.slotIndex }
+                } ?: findBestAutoAllyTarget(attacker, allies, "leya_skill_1")
+                if (targetAlly != null) {
+                    targetAlly.atkBoostPercent = maxOf(targetAlly.atkBoostPercent, 25)
+                    targetAlly.atkBoostRounds = maxOf(targetAlly.atkBoostRounds, 1)
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + targetAlly.slotIndex + 50,
+                            slotIndex = targetAlly.slotIndex,
+                            isPlayer = targetAlly.isPlayer,
+                            text = "+25%⚔️",
+                            type = CombatTextType.SKILL
+                        )
+                    )
+                }
+            }
+            "leya_skill_2" -> {
+                // Очищение: Снимает с выбранного союзника (кроме себя) негативные эффекты (эффект Кадру не снимается!)
+                val targetAlly = targetAllySlot?.let { slot ->
+                    allies.firstOrNull { it.slotIndex == slot && it.slotIndex != attacker.slotIndex }
+                } ?: findBestAutoAllyTarget(attacker, allies, "leya_skill_2")
+                    ?: allies.firstOrNull { it.slotIndex != attacker.slotIndex }
+                if (targetAlly != null) {
+                    val hadCleansable = hasCleansableNegativeEffect(targetAlly)
+                    targetAlly.isFrozen = false
+                    targetAlly.freezeRounds = 0
+                    targetAlly.isStunned = false
+                    targetAlly.stunRounds = 0
+                    targetAlly.isBlinded = false
+                    targetAlly.blindRounds = 0
+                    targetAlly.isCharmed = false
+                    targetAlly.charmRounds = 0
+                    targetAlly.isWeakened = false
+                    targetAlly.weakenedRounds = 0
+                    targetAlly.isSlowed = false
+                    targetAlly.slowRounds = 0
+                    targetAlly.burnRounds = 0
+                    targetAlly.burnPercent = 0
+                    targetAlly.burnAppliedRound = 0
+                    if (!targetAlly.hasKadruPoison) {
+                        targetAlly.poisonRounds = 0
+                        targetAlly.poisonFixedDamage = 0
+                        targetAlly.poisonAppliedRound = 0
+                    }
+                    // targetAlly.isHealingBlocked and hasKadruPoison remain untouched!
+                    newCombatTexts.add(
+                        FloatingCombatText(
+                            id = System.nanoTime() + targetAlly.slotIndex + 55,
+                            slotIndex = targetAlly.slotIndex,
+                            isPlayer = targetAlly.isPlayer,
+                            text = when {
+                                hadCleansable -> tr("🌿 Очищена!", "🌿 Purified!")
+                                targetAlly.isHealingBlocked -> tr("💛 Не снять", "💛 Permanent")
+                                else -> tr("🌿 Свет", "🌿 Cleansed")
+                            },
                             type = CombatTextType.SKILL
                         )
                     )
@@ -1164,6 +1336,7 @@ class BattleViewModel : ViewModel() {
                 combatTexts = newCombatTexts,
                 actionLogs = updatedLogs,
                 selectedPlayerSlot = nextPlayerSlot,
+                pendingSkillSlot = null,
                 playerTeamMana = newPlayerMana,
                 enemyTeamMana = newEnemyMana,
                 playerSkillsUsedCount = updatedSkillsUsed
@@ -1190,8 +1363,8 @@ class BattleViewModel : ViewModel() {
         if (enemyDead) {
             enemyTurnJob?.cancel()
             autoBattleJob?.cancel()
-            val victorySpeaker = state.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
-                ?: state.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }
+            val victorySpeaker = state.playerCards.filter { it.isAlive }.randomOrNull()
+                ?: state.playerCards.firstOrNull()
             val vQuote = victorySpeaker?.let { pickHeroBattleQuote(it, QuoteContext.VICTORY) }
             _battleState.update { current ->
                 if (current == null) null
@@ -1317,10 +1490,13 @@ class BattleViewModel : ViewModel() {
                     } else {
                         validTargets.random()
                     }
-                    val candidateSkills = if (enemy.availableSkills.isNotEmpty()) enemy.availableSkills else listOfNotNull(enemy.skill)
-                    val affordableSkill = candidateSkills.filter { currentState.enemyTeamMana >= it.energyCost }.maxByOrNull { it.energyCost }
-                    if (enemy.hasMagicUnlocked && affordableSkill != null) {
-                        performSkill(enemy, isPlayerAttacker = false, skillOverride = affordableSkill)
+                    val enemyAllies = currentState.enemyCards.filter { it.isAlive }
+                    val affordableSkill = selectAutoSkillForCard(enemy, enemyAllies, currentState.enemyTeamMana)
+                    if (affordableSkill != null) {
+                        val autoAllyTarget = if (skillRequiresAllyTarget(affordableSkill.id)) {
+                            findBestAutoAllyTarget(enemy, enemyAllies, affordableSkill.id)?.slotIndex
+                        } else null
+                        performSkill(enemy, isPlayerAttacker = false, skillOverride = affordableSkill, targetAllySlot = autoAllyTarget)
                     } else {
                         performAttackWithPattern(enemy, target.slotIndex, isPlayerAttacker = false)
                     }
@@ -1438,8 +1614,12 @@ class BattleViewModel : ViewModel() {
                 val speedDelay = (600 / (state.battleSpeed)).toLong()
                 delay(speedDelay)
 
-                if (readyCard.hasMagicUnlocked && readyCard.skill != null && state.playerTeamMana >= readyCard.skill.energyCost) {
-                    executePlayerSkill()
+                val autoSkill = selectAutoSkillForCard(readyCard, state.playerCards, state.playerTeamMana)
+                if (autoSkill != null && readyCard.skill?.id == autoSkill.id) {
+                    val autoAllyTarget = if (skillRequiresAllyTarget(autoSkill.id)) {
+                        findBestAutoAllyTarget(readyCard, state.playerCards, autoSkill.id)?.slotIndex
+                    } else null
+                    executePlayerSkill(targetAllySlot = autoAllyTarget)
                 } else {
                     val validTargets = state.enemyCards.filter { enemy ->
                         enemy.isAlive && canCardTargetSlot(readyCard, enemy.slotIndex, state.enemyCards)
@@ -1534,12 +1714,18 @@ class BattleViewModel : ViewModel() {
                     continue
                 }
 
-                val candidateSkills = if (card.availableSkills.isNotEmpty()) card.availableSkills else listOfNotNull(card.skill)
-                val affordableSkill = candidateSkills
-                    .filter { cur.playerTeamMana >= it.energyCost }
-                    .maxByOrNull { it.energyCost }
-                if (card.hasMagicUnlocked && affordableSkill != null) {
-                    performSkill(card, isPlayerAttacker = true, skillOverride = affordableSkill, silentInstant = true)
+                val affordableSkill = selectAutoSkillForCard(card, cur.playerCards, cur.playerTeamMana)
+                if (affordableSkill != null) {
+                    val autoAllyTarget = if (skillRequiresAllyTarget(affordableSkill.id)) {
+                        findBestAutoAllyTarget(card, cur.playerCards, affordableSkill.id)?.slotIndex
+                    } else null
+                    performSkill(
+                        card,
+                        isPlayerAttacker = true,
+                        skillOverride = affordableSkill,
+                        silentInstant = true,
+                        targetAllySlot = autoAllyTarget
+                    )
                 } else {
                     val validTargets = cur.enemyCards.filter { enemy ->
                         enemy.isAlive && canCardTargetSlot(card, enemy.slotIndex, cur.enemyCards)
@@ -1586,12 +1772,19 @@ class BattleViewModel : ViewModel() {
                     } else {
                         validTargets.random()
                     }
-                    val candidateSkills = if (enemy.availableSkills.isNotEmpty()) enemy.availableSkills else listOfNotNull(enemy.skill)
-                    val affordableSkill = candidateSkills
-                        .filter { cur.enemyTeamMana >= it.energyCost }
-                        .maxByOrNull { it.energyCost }
-                    if (enemy.hasMagicUnlocked && affordableSkill != null) {
-                        performSkill(enemy, isPlayerAttacker = false, skillOverride = affordableSkill, silentInstant = true)
+                    val enemyAllies = cur.enemyCards.filter { it.isAlive }
+                    val affordableSkill = selectAutoSkillForCard(enemy, enemyAllies, cur.enemyTeamMana)
+                    if (affordableSkill != null) {
+                        val autoAllyTarget = if (skillRequiresAllyTarget(affordableSkill.id)) {
+                            findBestAutoAllyTarget(enemy, enemyAllies, affordableSkill.id)?.slotIndex
+                        } else null
+                        performSkill(
+                            enemy,
+                            isPlayerAttacker = false,
+                            skillOverride = affordableSkill,
+                            silentInstant = true,
+                            targetAllySlot = autoAllyTarget
+                        )
                     } else {
                         performAttackWithPattern(enemy, target.slotIndex, isPlayerAttacker = false, silentInstant = true)
                     }
@@ -1628,8 +1821,8 @@ class BattleViewModel : ViewModel() {
         val finalRaw = _battleState.value ?: return
         val isVictory = finalRaw.enemyCards.none { it.isAlive } && finalRaw.playerCards.any { it.isAlive }
         val vQuote = if (isVictory) {
-            val speaker = finalRaw.playerCards.filter { it.isAlive && it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }.randomOrNull()
-                ?: finalRaw.playerCards.firstOrNull { it.heroId != "elios" && it.heroId != "vasilisa" && it.heroId != "kadru" }
+            val speaker = finalRaw.playerCards.filter { it.isAlive }.randomOrNull()
+                ?: finalRaw.playerCards.firstOrNull()
             speaker?.let { pickHeroBattleQuote(it, QuoteContext.VICTORY) }
         } else null
 

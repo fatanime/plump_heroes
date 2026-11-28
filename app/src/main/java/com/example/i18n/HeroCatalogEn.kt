@@ -17,10 +17,11 @@ fun HeroType.localizedDescription(): String = if (!GameLocaleState.isEnglish) de
 fun AttackPattern.localizedTitle(): String = if (!GameLocaleState.isEnglish) title else when (this) {
     AttackPattern.SINGLE -> "Single target attack"
     AttackPattern.PIERCE_LINE -> "Line pierce (hits both in column)"
-    AttackPattern.ALL_ENEMIES -> "Dark magic storm (hits all enemies)"
+    AttackPattern.ALL_ENEMIES -> "Dark magic storm (hits all enemies, ignores shield)"
     AttackPattern.DIAGONAL_PAIR -> "Diagonal throw (hits two diagonally)"
     AttackPattern.POISON_MELEE -> "Venomous strike (melee + poison)"
     AttackPattern.FRONT_50_BACK_25 -> "Ice wave (hits front and back row)"
+    AttackPattern.PIERCE_25_75 -> "Root pierce (hits column front and back)"
 }
 
 fun CardRarity.localizedName(): String = if (!GameLocaleState.isEnglish) displayName else when (this) {
@@ -58,7 +59,8 @@ private val HERO_NAMES_EN = mapOf(
     "baker" to "Griselda",
     "elios" to "Ellios",
     "vasilisa" to "Vasilisa",
-    "kadru" to "Kadru"
+    "kadru" to "Kadru",
+    "leya" to "Leya"
 )
 
 private val HERO_NAME_RU_TO_EN = mapOf(
@@ -77,6 +79,7 @@ private val HERO_NAME_RU_TO_EN = mapOf(
     "Эллиос" to "Ellios",
     "Василиса" to "Vasilisa",
     "Кадру" to "Kadru",
+    "Лея" to "Leya",
     "секретный персонаж" to "secret character",
     "Секретный персонаж" to "Secret character",
     "Героиня" to "Heroine",
@@ -98,7 +101,8 @@ private val HERO_TITLES_EN = mapOf(
     "baker" to "Wicked Pastry Chef",
     "elios" to "Albino Mage",
     "vasilisa" to "Desert Sniper",
-    "kadru" to "Tartarus Reptile"
+    "kadru" to "Tartarus Reptile",
+    "leya" to "Forest Wildling"
 )
 
 private val HERO_LORE_EN = mapOf(
@@ -116,7 +120,8 @@ private val HERO_LORE_EN = mapOf(
     "baker" to "A former royal cook banished for her foul temper, now dreaming of sweet revenge.",
     "elios" to "An illegitimate daughter of Isolda who fled from her mother's oppression.",
     "vasilisa" to "Vasilisa is a mysterious sniper of the Eastern desert who carries out Vlasta's personal contracts.",
-    "kadru" to "One of Lilith's minions. Her attack is venomous, and healing will be of no use."
+    "kadru" to "One of Lilith's minions. Her attack is venomous, and healing will be of no use.",
+    "leya" to "A wild maiden from the forests of the Northern Kingdom who commands trees and living roots."
 )
 
 fun localizeHeroNameByIdOrRu(heroId: String?, ruName: String): String {
@@ -174,7 +179,9 @@ private val SKILL_TEXTS_EN: Map<String, Pair<String, String>> = mapOf(
     "vasilisa_skill_2" to ("Light Hand" to "Has a 35% chance to deal critical damage, otherwise deals normal damage."),
     "vasilisa_skill_3" to ("Zigzag" to "Additionally deals 100% damage to a second enemy diagonally."),
     "kadru_skill_1" to ("Fury" to "Increases attack power by 30% for the next turn."),
-    "kadru_skill_2" to ("Venomous Pool" to "Strikes all enemies with poison. Poison deals 50% of the card's damage on the next turn.")
+    "kadru_skill_2" to ("Venomous Pool" to "Strikes all enemies with poison. Poison deals 50% of the card's damage on the next turn."),
+    "leya_skill_1" to ("Strengthened Root" to "Increases a chosen ally's attack by 25% for the next turn."),
+    "leya_skill_2" to ("Purification" to "Removes negative effects from a chosen ally.")
 )
 
 fun HeroSkill.localizedName(): String =

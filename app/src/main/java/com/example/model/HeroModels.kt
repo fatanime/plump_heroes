@@ -9,10 +9,11 @@ enum class HeroType(val displayName: String, val description: String) {
 enum class AttackPattern(val title: String) {
     SINGLE("Одиночная атака"),
     PIERCE_LINE("Пронзание линии (бьет обоих по линии)"),
-    ALL_ENEMIES("Шторм темной магии (бьет по всем врагам)"),
+    ALL_ENEMIES("Шторм темной магии (бьет по всем врагам, игнорирует щит)"),
     DIAGONAL_PAIR("Диагональный бросок (бьет двух по диагонали)"),
     POISON_MELEE("Ядовитый укус (ближняя атака + отравление)"),
-    FRONT_50_BACK_25("Волна льда (атака по первой и второй линии)")
+    FRONT_50_BACK_25("Волна льда (атака по первой и второй линии)"),
+    PIERCE_25_75("Пронзание корнями (бьет по линии)")
 }
 
 const val MAX_HERO_LEVEL = 12
@@ -313,6 +314,13 @@ fun resolveHeroImageNameForLevel(heroId: String, level: Int, fallbackName: Strin
             in 8..9 -> "hero_kadru_2"
             else -> "hero_kadru_3"
         }
+        "leya" -> when (level) {
+            in 1..4 -> "hero_leya_0"
+            in 5..7 -> "hero_leya_1"
+            in 8..9 -> "hero_leya_2"
+            in 10..11 -> "hero_leya_3"
+            else -> "hero_leya_max"
+        }
         else -> fallbackName
     }
 }
@@ -408,6 +416,11 @@ fun resolveHeroDrawableByName(imageName: String, fallbackRes: Int): Int {
         "hero_kadru_1" -> com.example.R.drawable.hero_kadru_1
         "hero_kadru_2" -> com.example.R.drawable.hero_kadru_2
         "hero_kadru_3" -> com.example.R.drawable.hero_kadru_3
+        "hero_leya_0" -> com.example.R.drawable.hero_leya_0
+        "hero_leya_1" -> com.example.R.drawable.hero_leya_1
+        "hero_leya_2" -> com.example.R.drawable.hero_leya_2
+        "hero_leya_3" -> com.example.R.drawable.hero_leya_3
+        "hero_leya_max" -> com.example.R.drawable.hero_leya_max
         else -> fallbackRes
     }
 }
@@ -421,7 +434,7 @@ fun inferHeroIdFromDrawableName(drawableName: String): String {
         .replace(Regex("_(0|1|2|3)$"), "")
     return when {
         clean.startsWith("mi_and_na") -> "mi_and_na"
-        clean in setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru") -> clean
+        clean in setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru", "leya") -> clean
         else -> ""
     }
 }
@@ -430,7 +443,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
     val normalizedId = heroId.trim().lowercase()
     val knownIds = setOf(
         "berta", "olga", "brunhilde", "witch", "iva", "alisa",
-        "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru"
+        "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru", "leya"
     )
     val effectiveId = if (normalizedId in knownIds) {
         normalizedId
@@ -451,6 +464,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
             "эллиос", "ellios", "elios" -> "elios"
             "василиса", "vasilisa" -> "vasilisa"
             "кадру", "kadru" -> "kadru"
+            "лея", "leya" -> "leya"
             else -> ""
         }
     }
@@ -470,6 +484,7 @@ fun resolveHeroFallbackDrawableRes(heroId: String, heroName: String = ""): Int {
         "elios" -> com.example.R.drawable.hero_elios
         "vasilisa" -> com.example.R.drawable.hero_vasilisa
         "kadru" -> com.example.R.drawable.hero_kadru
+        "leya" -> com.example.R.drawable.hero_leya_0
         else -> com.example.R.drawable.app_logo
     }
 }
@@ -497,6 +512,10 @@ fun resolveHeroFaceDrawableRes(heroId: String, fallbackRes: Int, heroLevel: Int 
         "demoness" -> if (heroLevel >= 8) com.example.R.drawable.hero_demoness_face_2 else com.example.R.drawable.hero_demoness_face
         "baker" -> if (heroLevel >= 5) com.example.R.drawable.hero_baker_face_2 else com.example.R.drawable.hero_baker_face
         "mi_and_na" -> if (heroLevel >= 8) com.example.R.drawable.hero_mi_and_na_face_2 else com.example.R.drawable.hero_mi_and_na_face
+        "elios" -> if (heroLevel >= 8) com.example.R.drawable.hero_elios_face_1 else com.example.R.drawable.hero_elios_face
+        "vasilisa" -> if (heroLevel >= 8) com.example.R.drawable.hero_vasilisa_face_1 else com.example.R.drawable.hero_vasilisa_face
+        "kadru" -> if (heroLevel >= 8) com.example.R.drawable.hero_kadru_face_1 else com.example.R.drawable.hero_kadru_face
+        "leya" -> com.example.R.drawable.hero_leya_face
         else -> fallbackRes
     }
 }
@@ -574,7 +593,7 @@ fun resolveArenaPortraitTierByChapterHp(
 
 fun getUnlockedHeroGalleryItems(heroId: String, currentLevel: Int, currentImageRes: Int): List<Pair<String, Int>> {
     val tierMinLevels = if (heroId == "kadru") listOf(1, 3, 5, 8, 10) else listOf(1, 3, 5, 8, 10, 12)
-    val evolvingIds = setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru")
+    val evolvingIds = setOf("berta", "olga", "brunhilde", "witch", "iva", "alisa", "mi_and_na", "vlasta", "evanda", "isolda", "demoness", "baker", "elios", "vasilisa", "kadru", "leya")
     if (heroId !in evolvingIds) {
         return listOf("hero_$heroId" to currentImageRes)
     }

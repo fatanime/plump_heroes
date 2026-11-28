@@ -43,6 +43,7 @@ data class BattleCard(
     var atkBoostRounds: Int = 0,
     var poisonFixedDamage: Int = 0,
     var isHealingBlocked: Boolean = false,
+    var hasKadruPoison: Boolean = false,
     val availableSkills: List<HeroSkill> = emptyList()
 ) {
     val isFrontRow: Boolean get() = slotIndex == 0 || slotIndex == 1
@@ -99,6 +100,7 @@ data class BattleState(
     val enemyCards: List<BattleCard> = emptyList(),
     val selectedPlayerSlot: Int? = null,
     val targetedEnemySlot: Int? = null,
+    val pendingSkillSlot: Int? = null,
     val playerTeamMana: Int = 0,
     val playerMaxMana: Int = 10,
     val enemyTeamMana: Int = 0,

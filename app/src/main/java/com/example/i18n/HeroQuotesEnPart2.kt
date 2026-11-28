@@ -338,6 +338,230 @@ internal val HERO_QUOTES_EN_PART2: Map<String, List<Pair<List<String>, List<Stri
             "Griselda, queen of the hottest kitchen and lushest curves!",
             "No seconds needed—you've already had your fill!"
         )
+    ),
+    "leya" to listOf(
+        listOf(
+            "The trees of the Northern Kingdom hear your every step—there is nowhere to hide!",
+            "Bare feet feel the earth, and living roots are already reaching for our foes!",
+            "The forest welcomes us into battle—hold tight to my vines!"
+        ) to listOf(
+            "The woodland grove is peaceful and bathed in light once more!",
+            "No guard can stop roots piercing straight through the column!",
+            "My sisters are safe, and the branches return to the canopy."
+        ),
+        listOf(
+            "Strengthened Root will surge the might of ancient pines into an ally!",
+            "Step onto the forest floor, sister—the woods will lend you their strength!",
+            "My vines slip past your vanguard to strike whoever hides behind!"
+        ) to listOf(
+            "Living branches pierced the entire line just as planned!",
+            "Boosting allies with the grove's power is a sure path to victory.",
+            "The northern woods are proud of such a clean triumph!"
+        ),
+        listOf(
+            "Leaves rustle over my shoulders as my hips fill with the sunlit grove's vigor!",
+            "Purification washes away hexes—no curse will break our squad!",
+            "The forest spirit grew noticeably curvier, yet my vines strike just as fast!"
+        ) to listOf(
+            "Fresh canopy light cleansed us and brought a confident win!",
+            "Soft curves never stop my vines from lashing with devastating force!",
+            "Even in fierce combat, the child of the forest stays unbroken."
+        ),
+        listOf(
+            "This leafy outfit barely holds my lush curves, yet the roots are mightier than ever!",
+            "Behold nature's generosity—ample charm for me, fierce protection for allies!",
+            "Every tree answers my whisper—foes cannot hide even in the back row!"
+        ) to listOf(
+            "A curvy wildling and the ancient woods seized a dazzling victory!",
+            "Purification cleared the haze, and the roots finished the rest!",
+            "Not a single caster survived behind their front-line shields!"
+        ),
+        listOf(
+            "Golden sunlight pours through the pines onto my lavish, blooming curves!",
+            "The forest blossomed inside me to the brim—my vines will sweep your ranks!",
+            "The barefoot mistress of the grove steps forth: stunned by the view or surrendering already?"
+        ) to listOf(
+            "A triumph of wild beauty, radiant light, and untamed woodland might!",
+            "The vines struck down even those hiding far in the back!",
+            "In the northern woods, no force shines brighter or more alluring than ours!"
+        ),
+        listOf(
+            "Even in white among the pines, I am the very spirit of light and lush bloom!",
+            "Nature shed every restraint, leaving pure allure and the fury of ancient roots!",
+            "Every branch in the grove obeys my hand—admire the sight before your defeat!"
+        ) to listOf(
+            "Absolute harmony of living light, sumptuous curves, and effortless victory!",
+            "The Northern Kingdom celebrates its most captivating guardian of the groves!",
+            "The sunlit forest rejoices—nobody could withstand Leya!"
+        )
+    ),
+    "elios" to listOf(
+        listOf(
+            "I didn't flee Gladen just to bow before somebody else's strength!",
+            "Both frost spheres are already spinning—a cold wave will sweep your entire line.",
+            "My mother ruled through fear, while I rely on cold calculation."
+        ) to listOf(
+            "Foolish to mistake a runaway from the Cold Mountains for an easy mark.",
+            "My spheres show no more mercy than the bitter Gladen wind.",
+            "I answer to nobody—and this victory belongs solely to me."
+        ),
+        listOf(
+            "One Chilling blast and two of you freeze in place without taking another step!",
+            "The snow queen tried to break me, yet my frost proved sharper.",
+            "Guard your formation: icy ripples reach both vanguard and backline."
+        ) to listOf(
+            "Cooled your temper faster than snow melts in the Cold Mountains.",
+            "That is what happens when foes underestimate Isolda's hidden secret.",
+            "Silence, hoarfrost, and zero chance for a comeback."
+        ),
+        listOf(
+            "Black Ice will shackle your finest fighters—their strikes lose half their bite!",
+            "My blue kimono hugs my chest and hips far tighter now, yet magic flows freer.",
+            "Thought a pale outcast was harmless? Try keeping your footing on my ice."
+        ) to listOf(
+            "Neither your pride nor your defense could stay upright on that Black Ice.",
+            "Pale skin and rounded curves are deceiving—inside burns steel-cold frost.",
+            "Let Gladen whisper: I outgrew my mother's gilded cage of ice."
+        ),
+        listOf(
+            "My white sash barely ties around my waist while mountain chill surges through my palms!",
+            "Between my frost orbs and lush curves, it's hard to catch your breath.",
+            "Don't confuse me with palace nobles—I strike your whole line without wasted words."
+        ) to listOf(
+            "A cool gaze, a pinpoint strike, and the lavish poise of a rebel mage!",
+            "Caught staring at the pale rebel and forgot about Chilling? Your mistake.",
+            "Freedom made me stronger, brighter, and far more dangerous."
+        ),
+        listOf(
+            "Silver hair gleams beneath the mountain sky while silk barely holds my rich curves!",
+            "Pit your strength against Black Ice and watch it crumble into frozen dust.",
+            "The Cold Mountains bred not obedience in me, but merciless beauty and might."
+        ) to listOf(
+            "Supremacy earned by will, not bloodline—admire away as the frost clears!",
+            "Even Gladen's frozen throne would pale beside a triumph like this.",
+            "Too stunning for exile, too ruthless for defeat."
+        ),
+        listOf(
+            "In a turquoise swimsuit among mountain blooms, I hide neither scars nor lush curves!",
+            "Look closely, Mother: your cast-off daughter became a goddess of frost and freedom!",
+            "Two icy orbs, dazzling pale skin, and a sumptuous figure—your squad is doomed."
+        ) to listOf(
+            "Total triumph! Free, dazzlingly curvy, and unconquerable Ellios!",
+            "No northern throne compares to this rebellious, searingly cold victory!",
+            "The mountain gale carries word of the mage who shattered Gladen's chains!"
+        )
+    ),
+    "vasilisa" to listOf(
+        listOf(
+            "The contract from Rosville is paid. All I need is one clean shot.",
+            "Dry winds of the Eastern desert never throw off my aim.",
+            "Stop fidgeting—extra movement only makes a sniper's job easier."
+        ) to listOf(
+            "Target neutralized. I'll send Vlasta a brief report without fluff.",
+            "One shot, minimal noise—contract closed.",
+            "In the desert, survival belongs to whoever shoots first and talks least."
+        ),
+        listOf(
+            "A Graze Shot drops even a bystander hiding behind your front line.",
+            "Crosshairs aligned, bolt chambered. You won't get a second chance.",
+            "I carry out the Queen of the East's personal errands with surgical precision."
+        ) to listOf(
+            "Clean work. The Graze Shot clipped the second target right on schedule.",
+            "Every coin of the bounty earned in full.",
+            "Clear the dunes—sweeping the Eastern sands is done."
+        ),
+        listOf(
+            "I have a Light Hand: find the right angle and a critical shot leaves nothing behind.",
+            "My leather corset grew snugger, yet a desert marksman's coat still hides every move.",
+            "While you size up my figure, the reticle is already resting between your eyes."
+        ) to listOf(
+            "That critical hit landed quieter than a whisper—and ended the fight.",
+            "My Light Hand didn't flinch by a single millimeter.",
+            "Bad idea losing focus on the sands outside Rosville."
+        ),
+        listOf(
+            "My Zigzag drops two foes diagonally with one calculated pull of the trigger.",
+            "Corset clasps strain over fuller curves, yet my grip holds the rifle steady as steel.",
+            "Want to live? Try not to stare while I adjust for the desert wind."
+        ) to listOf(
+            "Two targets cleared in one Zigzag—ideal ammunition economy.",
+            "Cold-blooded, curvy, and lethally accurate.",
+            "Not even an Eastern sandstorm can shield you from my scope."
+        ),
+        listOf(
+            "My hips barely fit beneath this long coat, yet today's caliber speaks loud enough.",
+            "Vlasta pays for results, and my plush allure rattles targets before I even fire.",
+            "Stand still—the longer you stare, the easier it is to line up the shot."
+        ) to listOf(
+            "Zero wasted rounds. Contract fulfilled, trophies collected.",
+            "The desert returns to silence, and victory stays with my rifle.",
+            "Beauty without idle chatter hits harder than any speech."
+        ),
+        listOf(
+            "Off came the heavy coat: under desert heat and denim bikini, my sightline is sharper.",
+            "Sumptuous curves beneath the blazing Eastern sun and a faithful rifle—bad news for targets.",
+            "Don't blink: watch why Rosville's top contracts always come straight to me."
+        ) to listOf(
+            "Spotless finale to the contract—no scratches, no witnesses.",
+            "Too hot for the desert and far too dangerous for any foe.",
+            "The rifle cools while Vasilisa's legend echoes from Rosville to the borders."
+        )
+    ),
+    "kadru" to listOf(
+        listOf(
+            "Hiss... The scent of fresh prey drifted straight down into Hell's Rift!",
+            "My claws already dig into Patreya's stone—too late to run!",
+            "Lilith slipped my leash, and no healing magic will save you from my venom!"
+        ) to listOf(
+            "Prey went quiet, and the venom hasn't even cooled on my fangs!",
+            "Not a single healer can wash away Tartarus's curse!",
+            "A glorious hunt in Lady Lilith's name!"
+        ),
+        listOf(
+            "Tartarus Fury has awakened—my next strike shreds your armor to ribbons!",
+            "I don't hiss to bluff—I taste the panic in your blood!",
+            "Tough scales, razor claws, and only your front row standing in my path."
+        ) to listOf(
+            "Fury and a lethal bite left nothing standing in the vanguard!",
+            "Sweet crunch of armor beneath the Tartarus reptile's claws!",
+            "Go ahead and call your healers—there's nobody left to mend!"
+        ),
+        listOf(
+            "A Venomous Pool floods the entire battlefield—breathe deep while you still can!",
+            "Scaled hips and heavy tail swelled with Tartarus might—my charge is unstoppable!",
+            "Venom sinks straight into the heart and snuffs out every hope of recovery!"
+        ) to listOf(
+            "Your whole squad choked in the Venomous Pool with zero chance of rescue!",
+            "Heavy curves and iron-hard scales crush harder than Patreya's cliffs!",
+            "Hell's Rift roars for a slaughter this ferocious!"
+        ),
+        listOf(
+            "Crimson gear burns brighter against green scales than Tartarus lava—time to tear in!",
+            "Look at this massive, curvy predator silhouette and tremble before my fangs!",
+            "Blight boils in every vein: one lunge poisons your entire formation!"
+        ) to listOf(
+            "Monstrous, curvy might and Abyssal venom turned battle into a feast!",
+            "Lilith will be pleased: foes fell, and poison burned out their resolve!",
+            "Neither steel nor temple light outlasts the beast of Patreya!"
+        ),
+        listOf(
+            "Huntress queen of Tartarus in all her monstrous, temptingly lush power—charge!",
+            "Crimson fabric strains across mighty bust and hips while deadly venom hisses on my tongue!",
+            "Rift cries, molten heat, and Venomous Pool will grind your pitiful line to ash!"
+        ) to listOf(
+            "Absolute triumph of Tartarus! Nobody survived Kadru's onslaught!",
+            "Every chain snapped—the Abyssal beast proved her savage supremacy!",
+            "Fierce, curvy, and undefeated, Lilith's minion claims the prize!"
+        ),
+        listOf(
+            "Abyssal Fury peaks—every breath near me reeks of lethal Tartarus venom!",
+            "Armored scales, voluptuous predator curves, and relentless claws—no escape!",
+            "Hell's Rift yawns wide: today you become easy prey for Kadru!"
+        ) to listOf(
+            "Pinnacle of rage, blight, and merciless Tartarus power!",
+            "Venom finished the job before your guards could raise a shield!",
+            "Patreya trembles at my roar—total victory belongs to me!"
+        )
     )
 )
 

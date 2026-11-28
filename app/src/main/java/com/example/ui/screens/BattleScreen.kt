@@ -148,9 +148,10 @@ fun BattleScreen(
                     val card2 = battleState.enemyCards.firstOrNull { it.slotIndex == 2 }
                     val card3 = battleState.enemyCards.firstOrNull { it.slotIndex == 3 }
 
-                    val isTarget2 = selectedAttacker != null && card2 != null && card2.isAlive &&
+                    val isSelectingAllyTarget = battleState.pendingSkillSlot != null
+                    val isTarget2 = !isSelectingAllyTarget && selectedAttacker != null && card2 != null && card2.isAlive &&
                             canCardTargetSlot(selectedAttacker, 2, battleState.enemyCards)
-                    val isTarget3 = selectedAttacker != null && card3 != null && card3.isAlive &&
+                    val isTarget3 = !isSelectingAllyTarget && selectedAttacker != null && card3 != null && card3.isAlive &&
                             canCardTargetSlot(selectedAttacker, 3, battleState.enemyCards)
 
                     BattleCardWidget(
@@ -184,9 +185,10 @@ fun BattleScreen(
                     val card0 = battleState.enemyCards.firstOrNull { it.slotIndex == 0 }
                     val card1 = battleState.enemyCards.firstOrNull { it.slotIndex == 1 }
 
-                    val isTarget0 = selectedAttacker != null && card0 != null && card0.isAlive &&
+                    val isSelectingAllyTarget = battleState.pendingSkillSlot != null
+                    val isTarget0 = !isSelectingAllyTarget && selectedAttacker != null && card0 != null && card0.isAlive &&
                             canCardTargetSlot(selectedAttacker, 0, battleState.enemyCards)
-                    val isTarget1 = selectedAttacker != null && card1 != null && card1.isAlive &&
+                    val isTarget1 = !isSelectingAllyTarget && selectedAttacker != null && card1 != null && card1.isAlive &&
                             canCardTargetSlot(selectedAttacker, 1, battleState.enemyCards)
 
                     BattleCardWidget(
@@ -214,11 +216,14 @@ fun BattleScreen(
             }
 
             // CENTER DIVIDER & ROUND BANNER (Matching Image 1)
+            val aliveAlliesCount = battleState.playerCards.count { it.isAlive }
             CenterRoundDivider(
                 round = battleState.round,
                 phase = battleState.phase,
                 selectedAttacker = selectedAttacker,
                 totalPlayerMana = totalPlayerMana,
+                isAwaitingAllyTarget = battleState.pendingSkillSlot != null && battleState.pendingSkillSlot == battleState.selectedPlayerSlot,
+                hasOtherAliveAlly = aliveAlliesCount > 1,
                 onCastSkill = onCastSkill
             )
 
@@ -230,6 +235,7 @@ fun BattleScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val pendingSkillSlot = battleState.pendingSkillSlot
                 // Player Front Row (Slots 0, 1)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
@@ -241,7 +247,7 @@ fun BattleScreen(
                     BattleCardWidget(
                         card = card0,
                         isSelectedAttacker = battleState.selectedPlayerSlot == 0,
-                        isValidTarget = false,
+                        isValidTarget = pendingSkillSlot != null && card0?.isAlive == true && pendingSkillSlot != 0,
                         combatTexts = battleState.combatTexts,
                         attackAnimation = battleState.activeAttackAnimation,
                         dotHitTargets = battleState.dotHitTargets,
@@ -252,7 +258,7 @@ fun BattleScreen(
                     BattleCardWidget(
                         card = card1,
                         isSelectedAttacker = battleState.selectedPlayerSlot == 1,
-                        isValidTarget = false,
+                        isValidTarget = pendingSkillSlot != null && card1?.isAlive == true && pendingSkillSlot != 1,
                         combatTexts = battleState.combatTexts,
                         attackAnimation = battleState.activeAttackAnimation,
                         dotHitTargets = battleState.dotHitTargets,
@@ -272,7 +278,7 @@ fun BattleScreen(
                     BattleCardWidget(
                         card = card2,
                         isSelectedAttacker = battleState.selectedPlayerSlot == 2,
-                        isValidTarget = false,
+                        isValidTarget = pendingSkillSlot != null && card2?.isAlive == true && pendingSkillSlot != 2,
                         combatTexts = battleState.combatTexts,
                         attackAnimation = battleState.activeAttackAnimation,
                         dotHitTargets = battleState.dotHitTargets,
@@ -283,7 +289,7 @@ fun BattleScreen(
                     BattleCardWidget(
                         card = card3,
                         isSelectedAttacker = battleState.selectedPlayerSlot == 3,
-                        isValidTarget = false,
+                        isValidTarget = pendingSkillSlot != null && card3?.isAlive == true && pendingSkillSlot != 3,
                         combatTexts = battleState.combatTexts,
                         attackAnimation = battleState.activeAttackAnimation,
                         dotHitTargets = battleState.dotHitTargets,
@@ -560,6 +566,8 @@ fun CenterRoundDivider(
     phase: BattlePhase,
     selectedAttacker: BattleCard?,
     totalPlayerMana: Int,
+    isAwaitingAllyTarget: Boolean = false,
+    hasOtherAliveAlly: Boolean = true,
     onCastSkill: () -> Unit
 ) {
     Surface(
@@ -568,7 +576,7 @@ fun CenterRoundDivider(
             .padding(vertical = 4.dp),
         shape = RoundedCornerShape(10.dp),
         color = Color(0xDD1B142F),
-        border = BorderStroke(1.dp, GameGold.copy(alpha = 0.5f))
+        border = BorderStroke(1.dp, if (isAwaitingAllyTarget) Color(0xFF66BB6A) else GameGold.copy(alpha = 0.5f))
     ) {
         Row(
             modifier = Modifier
@@ -585,12 +593,17 @@ fun CenterRoundDivider(
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = when (phase) {
-                        BattlePhase.PLAYER_TURN -> tr("Ваш ход", "Your Turn")
-                        BattlePhase.ENEMY_TURN -> tr("Ход врага...", "Enemy Turn...")
+                    text = when {
+                        isAwaitingAllyTarget -> tr("Выберите союзницу 🌿", "Pick an ally 🌿")
+                        phase == BattlePhase.PLAYER_TURN -> tr("Ваш ход", "Your Turn")
+                        phase == BattlePhase.ENEMY_TURN -> tr("Ход врага...", "Enemy Turn...")
                         else -> ""
                     },
-                    color = if (phase == BattlePhase.PLAYER_TURN) Color(0xFF81C784) else Color(0xFFFFB74D),
+                    color = when {
+                        isAwaitingAllyTarget -> Color(0xFF81C784)
+                        phase == BattlePhase.PLAYER_TURN -> Color(0xFF81C784)
+                        else -> Color(0xFFFFB74D)
+                    },
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -625,12 +638,13 @@ fun CenterRoundDivider(
             // Cast Skill Button if active attacker has magic unlocked and enough energy
             if (selectedAttacker != null) {
                 if (selectedAttacker.skill != null && selectedAttacker.hasMagicUnlocked) {
-                    val hasEnergy = totalPlayerMana >= selectedAttacker.skill.energyCost
+                    val requiresAlly = selectedAttacker.skill.id == "leya_skill_1" || selectedAttacker.skill.id == "leya_skill_2"
+                    val hasEnergy = totalPlayerMana >= selectedAttacker.skill.energyCost && (!requiresAlly || hasOtherAliveAlly)
                     Button(
                         onClick = onCastSkill,
                         enabled = hasEnergy && phase == BattlePhase.PLAYER_TURN,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = GameGold,
+                            containerColor = if (isAwaitingAllyTarget) Color(0xFF66BB6A) else GameGold,
                             contentColor = Color.Black,
                             disabledContainerColor = Color(0xFF2D2344),
                             disabledContentColor = Color(0xFF6B5E86)
@@ -639,10 +653,14 @@ fun CenterRoundDivider(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier = Modifier.testTag("cast_skill_button")
                     ) {
-                        Text("⚡", fontSize = 12.sp)
+                        Text(if (isAwaitingAllyTarget) "🌿" else "⚡", fontSize = 12.sp)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${selectedAttacker.skill.localizedName()} (${selectedAttacker.skill.energyCost}⚡)",
+                            text = if (isAwaitingAllyTarget) {
+                                tr("Отмена", "Cancel")
+                            } else {
+                                "${selectedAttacker.skill.localizedName()} (${selectedAttacker.skill.energyCost}⚡)"
+                            },
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )

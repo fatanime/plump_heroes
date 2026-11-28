@@ -183,6 +183,45 @@ class GameDataRepository(context: Context) {
                 unlockPlayerLevel = 8,
                 unlockCareerStageId = 306 // Доступны после прохождения босса 3 главы (3-6 Изольда)
             ),
+            HeroCard(
+                id = "leya",
+                name = "Лея",
+                title = "Лесная дикарка",
+                heroType = HeroType.HYBRID,
+                rarity = CardRarity.SPECIAL,
+                element = Element.LIGHT,
+                baseAtk = 8,
+                baseArmor = 0,
+                baseHp = 24,
+                level = 1,
+                shards = 0,
+                shardsNeeded = 10,
+                imageRes = R.drawable.hero_leya_0,
+                attackPattern = AttackPattern.PIERCE_25_75,
+                activeSkillId = "leya_skill_1",
+                availableSkills = listOf(
+                    HeroSkill(
+                        "leya_skill_1",
+                        "Усиленный корень",
+                        "Повышает атаку выбранной союзницы на 25% на следующий ход.",
+                        energyCost = 2,
+                        skillType = SkillType.SUPPORT,
+                        unlockLevel = 3
+                    ),
+                    HeroSkill(
+                        "leya_skill_2",
+                        "Очищение",
+                        "Снимает с выбранной союзницы негативные эффекты.",
+                        energyCost = 3,
+                        skillType = SkillType.SUPPORT,
+                        unlockLevel = 5
+                    )
+                ),
+                lore = "Дикарка из лесов Северного царства, умеющая повелевать деревьями и живыми корнями.",
+                isUnlocked = false,
+                unlockPlayerLevel = 8,
+                unlockCareerStageId = 306 // Доступна после прохождения босса 3 главы (3-6 Изольда)
+            ),
 
             // --- CHAPTER 2 HEROES (RARE / РЕДКАЯ) ---
             HeroCard(
@@ -759,7 +798,7 @@ class GameDataRepository(context: Context) {
                         stars = 0, isUnlocked = false,
                         rewardGold = 950, rewardGems = 55, rewardExp = 230,
                         rewardArtifactId = "art_rare_6",
-                        battleBgRes = R.drawable.bg_iva
+                        battleBgRes = R.drawable.bg_leya
                     ),
                     CampaignStage(
                         id = 303, chapterId = 3, stageNumber = 3,
@@ -822,19 +861,19 @@ class GameDataRepository(context: Context) {
                         title = "4-1 В лесах Северного Царства",
                         recommendedPower = 110,
                         requiredPlayerLevel = 1,
-                        enemyHeroIds = listOf("vlasta", "alisa", "isolda", "mi_and_na"),
+                        enemyHeroIds = listOf("leya", "alisa", "isolda", "mi_and_na"),
                         enemyLevels = listOf(5, 5, 5, 5),
                         stars = 0, isUnlocked = false,
                         rewardGold = 1400, rewardGems = 70, rewardExp = 300,
                         rewardArtifactId = null,
-                        battleBgRes = R.drawable.bg_iva
+                        battleBgRes = R.drawable.bg_leya
                     ),
                     CampaignStage(
                         id = 402, chapterId = 4, stageNumber = 2,
                         title = "4-2 У Болотного Моря",
                         recommendedPower = 115,
                         requiredPlayerLevel = 1,
-                        enemyHeroIds = listOf("brunhilde", "olga", "witch", "baker"),
+                        enemyHeroIds = listOf("brunhilde", "olga", "witch", "leya"),
                         enemyLevels = listOf(5, 5, 5, 5),
                         stars = 0, isUnlocked = false,
                         rewardGold = 1550, rewardGems = 75, rewardExp = 330,
@@ -846,7 +885,7 @@ class GameDataRepository(context: Context) {
                         title = "4-3 Западные чертоги",
                         recommendedPower = 120,
                         requiredPlayerLevel = 1,
-                        enemyHeroIds = listOf("brunhilde", "vlasta", "isolda", "iva"),
+                        enemyHeroIds = listOf("brunhilde", "leya", "isolda", "iva"),
                         enemyLevels = listOf(6, 6, 5, 5),
                         stars = 0, isUnlocked = false,
                         rewardGold = 1700, rewardGems = 80, rewardExp = 360,
@@ -918,8 +957,8 @@ class GameDataRepository(context: Context) {
             "Повелительница Арены", "Легенда Колизея", "Непобедимая Валькирия"
         )
         // Strictly separate front row (Melee or Hybrid) and back row (Ranged or Hybrid): Melee is NEVER placed in back row slots 2 and 3!
-        val frontRowCandidates = listOf("brunhilde", "olga", "vlasta", "alisa", "evanda", "demoness", "baker", "mi_and_na")
-        val backRowCandidates = listOf("berta", "witch", "isolda", "iva", "demoness", "baker", "mi_and_na")
+        val frontRowCandidates = listOf("brunhilde", "olga", "vlasta", "alisa", "evanda", "demoness", "baker", "mi_and_na", "leya")
+        val backRowCandidates = listOf("berta", "witch", "isolda", "iva", "demoness", "baker", "mi_and_na", "leya")
 
         val heroNameMap = mapOf(
             "brunhilde" to "Брунгильда",
@@ -929,6 +968,7 @@ class GameDataRepository(context: Context) {
             "alisa" to "Алиса",
             "iva" to "Ива",
             "mi_and_na" to "Ми и На",
+            "leya" to "Лея",
             "vlasta" to "Власта",
             "evanda" to "Эванда",
             "isolda" to "Изольда",
@@ -1044,8 +1084,8 @@ class GameDataRepository(context: Context) {
         unlockedSecretHeroIds: Set<String> = emptySet(),
         secretSpawnRoll: Int = Random.nextInt(100)
     ): ArenaBot {
-        val frontRowCandidates = listOf("brunhilde", "olga", "vlasta", "alisa", "evanda", "demoness", "baker", "mi_and_na")
-        val backRowCandidates = listOf("berta", "witch", "isolda", "iva", "demoness", "baker", "mi_and_na")
+        val frontRowCandidates = listOf("brunhilde", "olga", "vlasta", "alisa", "evanda", "demoness", "baker", "mi_and_na", "leya")
+        val backRowCandidates = listOf("berta", "witch", "isolda", "iva", "demoness", "baker", "mi_and_na", "leya")
         val heroNameMap = mapOf(
             "brunhilde" to "Брунгильда",
             "olga" to "Ольга",
@@ -1054,6 +1094,7 @@ class GameDataRepository(context: Context) {
             "alisa" to "Алиса",
             "iva" to "Ива",
             "mi_and_na" to "Ми и На",
+            "leya" to "Лея",
             "vlasta" to "Власта",
             "evanda" to "Эванда",
             "isolda" to "Изольда",
